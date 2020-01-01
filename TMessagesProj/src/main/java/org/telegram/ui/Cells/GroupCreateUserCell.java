@@ -9,6 +9,7 @@
 package org.telegram.ui.Cells;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.widget.FrameLayout;
@@ -47,8 +48,13 @@ public class GroupCreateUserCell extends FrameLayout {
     private int lastStatus;
     private TLRPC.FileLocation lastAvatar;
 
+    private boolean drawDivider;
+    private int padding;
+
     public GroupCreateUserCell(Context context, boolean needCheck, int padding) {
         super(context);
+        drawDivider = false;
+        this.padding = padding;
         avatarDrawable = new AvatarDrawable();
 
         avatarImageView = new BackupImageView(context);
@@ -63,24 +69,31 @@ public class GroupCreateUserCell extends FrameLayout {
         addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 28 : 72) + padding, 10, (LocaleController.isRTL ? 72 : 28) + padding, 0));
 
         statusTextView = new SimpleTextView(context);
-        statusTextView.setTextSize(15);
+        statusTextView.setTextSize(14);
         statusTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         addView(statusTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 28 : 72) + padding, 32, (LocaleController.isRTL ? 72 : 28) + padding, 0));
 
         if (needCheck) {
-            checkBox = new CheckBox2(context);
+            checkBox = new CheckBox2(context, 21);
             checkBox.setColor(null, Theme.key_windowBackgroundWhite, Theme.key_checkboxCheck);
-            checkBox.setSize(21);
             checkBox.setDrawUnchecked(false);
             checkBox.setDrawBackgroundAsArc(3);
             addView(checkBox, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 40, 33, LocaleController.isRTL ? 39 : 0, 0));
         }
+
+        setWillNotDraw(false);
+    }
+
+    public void setObject(TLObject object, CharSequence name, CharSequence status, boolean drawDivider) {
+        setObject(object, name, status);
+        this.drawDivider = drawDivider;
     }
 
     public void setObject(TLObject object, CharSequence name, CharSequence status) {
         currentObject = object;
         currentStatus = status;
         currentName = name;
+        drawDivider = false;
         update(0);
     }
 
@@ -212,6 +225,8 @@ public class GroupCreateUserCell extends FrameLayout {
                 statusTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
                 if (currentChat.participants_count != 0) {
                     statusTextView.setText(LocaleController.formatPluralString("Members", currentChat.participants_count));
+                } else if (currentChat.has_geo) {
+                    statusTextView.setText(LocaleController.getString("MegaLocation", R.string.MegaLocation));
                 } else if (TextUtils.isEmpty(currentChat.username)) {
                     statusTextView.setText(LocaleController.getString("MegaPrivate", R.string.MegaPrivate));
                 } else {
@@ -226,6 +241,16 @@ public class GroupCreateUserCell extends FrameLayout {
             statusTextView.setText(currentStatus, true);
             statusTextView.setTag(Theme.key_windowBackgroundWhiteGrayText);
             statusTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+        }
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        if (drawDivider) {
+            int start = AndroidUtilities.dp(LocaleController.isRTL ? 0 : 72 + padding);
+            int end = getMeasuredWidth() - AndroidUtilities.dp(!LocaleController.isRTL ? 0 : 72 + padding);
+            canvas.drawRect(start, getMeasuredHeight() - 1, end, getMeasuredHeight(), Theme.dividerPaint);
         }
     }
 

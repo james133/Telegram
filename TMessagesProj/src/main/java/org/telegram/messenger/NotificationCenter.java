@@ -51,7 +51,6 @@ public class NotificationCenter {
     public static final int mainUserInfoChanged = totalEvents++;
     public static final int privacyRulesUpdated = totalEvents++;
     public static final int updateMessageMedia = totalEvents++;
-    public static final int recentImagesDidLoad = totalEvents++;
     public static final int replaceMessagesObjects = totalEvents++;
     public static final int didSetPasscode = totalEvents++;
     public static final int didSetTwoStepPassword = totalEvents++;
@@ -72,6 +71,7 @@ public class NotificationCenter {
     public static final int chatSearchResultsLoading = totalEvents++;
     public static final int musicDidLoad = totalEvents++;
     public static final int needShowAlert = totalEvents++;
+    public static final int needShowPlayServicesAlert = totalEvents++;
     public static final int didUpdatedMessagesViews = totalEvents++;
     public static final int needReloadRecentDialogsSearch = totalEvents++;
     public static final int peerSettingsDidLoad = totalEvents++;
@@ -89,6 +89,15 @@ public class NotificationCenter {
     public static final int didUpdatePollResults = totalEvents++;
     public static final int chatOnlineCountDidLoad = totalEvents++;
     public static final int videoLoadingStateChanged = totalEvents++;
+    public static final int newPeopleNearbyAvailable = totalEvents++;
+    public static final int stopAllHeavyOperations = totalEvents++;
+    public static final int startAllHeavyOperations = totalEvents++;
+    public static final int sendingMessagesChanged = totalEvents++;
+    public static final int didUpdateReactions = totalEvents++;
+    public static final int scheduledMessagesUpdated = totalEvents++;
+
+    public static final int walletPendingTransactionsChanged = totalEvents++;
+    public static final int walletSyncProgressChanged = totalEvents++;
 
     public static final int httpFileDidLoad = totalEvents++;
     public static final int httpFileDidFailedLoad = totalEvents++;
@@ -100,7 +109,7 @@ public class NotificationCenter {
     public static final int FileUploadProgressChanged = totalEvents++;
     public static final int FileLoadProgressChanged = totalEvents++;
     public static final int fileDidLoad = totalEvents++;
-    public static final int fileDidFailedLoad = totalEvents++;
+    public static final int fileDidFailToLoad = totalEvents++;
     public static final int filePreparingStarted = totalEvents++;
     public static final int fileNewChunkAvailable = totalEvents++;
     public static final int filePreparingFailed = totalEvents++;
@@ -135,6 +144,9 @@ public class NotificationCenter {
 
     public static final int newEmojiSuggestionsAvailable = totalEvents++;
 
+    public static final int themeUploadedToServer = totalEvents++;
+    public static final int themeUploadError = totalEvents++;
+
     //global
     public static final int pushMessagesUpdated = totalEvents++;
     public static final int stopEncodingService = totalEvents++;
@@ -148,7 +160,12 @@ public class NotificationCenter {
     public static final int didReplacedPhotoInMemCache = totalEvents++;
     public static final int didSetNewTheme = totalEvents++;
     public static final int themeListUpdated = totalEvents++;
+    public static final int didApplyNewTheme = totalEvents++;
+    public static final int themeAccentListUpdated = totalEvents++;
+    public static final int needCheckSystemBarColors = totalEvents++;
+    public static final int needShareTheme = totalEvents++;
     public static final int needSetDayNightTheme = totalEvents++;
+    public static final int goingToPreviewTheme = totalEvents++;
     public static final int locationPermissionGranted = totalEvents++;
     public static final int reloadInterface = totalEvents++;
     public static final int suggestedLangpack = totalEvents++;
@@ -156,14 +173,17 @@ public class NotificationCenter {
     public static final int proxySettingsChanged = totalEvents++;
     public static final int proxyCheckDone = totalEvents++;
     public static final int liveLocationsChanged = totalEvents++;
+    public static final int newLocationAvailable = totalEvents++;
     public static final int liveLocationsCacheChanged = totalEvents++;
     public static final int notificationsCountUpdated = totalEvents++;
     public static final int playerDidStartPlaying = totalEvents++;
     public static final int closeSearchByActiveAction = totalEvents++;
+    public static final int messagePlayingSpeedChanged = totalEvents++;
+    public static final int screenStateChanged = totalEvents++;
 
-    private SparseArray<ArrayList<Object>> observers = new SparseArray<>();
-    private SparseArray<ArrayList<Object>> removeAfterBroadcast = new SparseArray<>();
-    private SparseArray<ArrayList<Object>> addAfterBroadcast = new SparseArray<>();
+    private SparseArray<ArrayList<NotificationCenterDelegate>> observers = new SparseArray<>();
+    private SparseArray<ArrayList<NotificationCenterDelegate>> removeAfterBroadcast = new SparseArray<>();
+    private SparseArray<ArrayList<NotificationCenterDelegate>> addAfterBroadcast = new SparseArray<>();
     private ArrayList<DelayedPost> delayedPosts = new ArrayList<>(10);
 
     private int broadcasting = 0;
@@ -187,7 +207,8 @@ public class NotificationCenter {
     }
 
     private int currentAccount;
-    private static volatile NotificationCenter Instance[] = new NotificationCenter[UserConfig.MAX_ACCOUNT_COUNT];
+    private int currentHeavyOperationFlags;
+    private static volatile NotificationCenter[] Instance = new NotificationCenter[UserConfig.MAX_ACCOUNT_COUNT];
     private static volatile NotificationCenter globalInstance;
 
     @UiThread
@@ -222,11 +243,16 @@ public class NotificationCenter {
         currentAccount = account;
     }
 
-    public void setAllowedNotificationsDutingAnimation(int notifications[]) {
+    public void setAllowedNotificationsDutingAnimation(int[] notifications) {
         allowedNotifications = notifications;
     }
 
     public void setAnimationInProgress(boolean value) {
+        if (value) {
+            NotificationCenter.getGlobalInstance().postNotificationName(stopAllHeavyOperations, 512);
+        } else {
+            NotificationCenter.getGlobalInstance().postNotificationName(startAllHeavyOperations, 512);
+        }
         animationInProgress = value;
         if (!animationInProgress && !delayedPosts.isEmpty()) {
             for (int a = 0; a < delayedPosts.size(); a++) {
@@ -241,15 +267,26 @@ public class NotificationCenter {
         return animationInProgress;
     }
 
+    public int getCurrentHeavyOperationFlags() {
+        return currentHeavyOperationFlags;
+    }
+
     public void postNotificationName(int id, Object... args) {
-        boolean allowDuringAnimation = false;
-        if (allowedNotifications != null) {
+        boolean allowDuringAnimation = id == startAllHeavyOperations || id == stopAllHeavyOperations;
+        if (!allowDuringAnimation && allowedNotifications != null) {
             for (int a = 0; a < allowedNotifications.length; a++) {
                 if (allowedNotifications[a] == id) {
                     allowDuringAnimation = true;
                     break;
                 }
             }
+        }
+        if (id == startAllHeavyOperations) {
+            Integer flags = (Integer) args[0];
+            currentHeavyOperationFlags &=~ flags;
+        } else if (id == stopAllHeavyOperations) {
+            Integer flags = (Integer) args[0];
+            currentHeavyOperationFlags |= flags;
         }
         postNotificationNameInternal(id, allowDuringAnimation, args);
     }
@@ -270,11 +307,11 @@ public class NotificationCenter {
             return;
         }
         broadcasting++;
-        ArrayList<Object> objects = observers.get(id);
+        ArrayList<NotificationCenterDelegate> objects = observers.get(id);
         if (objects != null && !objects.isEmpty()) {
             for (int a = 0; a < objects.size(); a++) {
-                Object obj = objects.get(a);
-                ((NotificationCenterDelegate) obj).didReceivedNotification(id, currentAccount, args);
+                NotificationCenterDelegate obj = objects.get(a);
+                obj.didReceivedNotification(id, currentAccount, args);
             }
         }
         broadcasting--;
@@ -282,7 +319,7 @@ public class NotificationCenter {
             if (removeAfterBroadcast.size() != 0) {
                 for (int a = 0; a < removeAfterBroadcast.size(); a++) {
                     int key = removeAfterBroadcast.keyAt(a);
-                    ArrayList<Object> arrayList = removeAfterBroadcast.get(key);
+                    ArrayList<NotificationCenterDelegate> arrayList = removeAfterBroadcast.get(key);
                     for (int b = 0; b < arrayList.size(); b++) {
                         removeObserver(arrayList.get(b), key);
                     }
@@ -292,7 +329,7 @@ public class NotificationCenter {
             if (addAfterBroadcast.size() != 0) {
                 for (int a = 0; a < addAfterBroadcast.size(); a++) {
                     int key = addAfterBroadcast.keyAt(a);
-                    ArrayList<Object> arrayList = addAfterBroadcast.get(key);
+                    ArrayList<NotificationCenterDelegate> arrayList = addAfterBroadcast.get(key);
                     for (int b = 0; b < arrayList.size(); b++) {
                         addObserver(arrayList.get(b), key);
                     }
@@ -302,14 +339,14 @@ public class NotificationCenter {
         }
     }
 
-    public void addObserver(Object observer, int id) {
+    public void addObserver(NotificationCenterDelegate observer, int id) {
         if (BuildVars.DEBUG_VERSION) {
             if (Thread.currentThread() != ApplicationLoader.applicationHandler.getLooper().getThread()) {
                 throw new RuntimeException("addObserver allowed only from MAIN thread");
             }
         }
         if (broadcasting != 0) {
-            ArrayList<Object> arrayList = addAfterBroadcast.get(id);
+            ArrayList<NotificationCenterDelegate> arrayList = addAfterBroadcast.get(id);
             if (arrayList == null) {
                 arrayList = new ArrayList<>();
                 addAfterBroadcast.put(id, arrayList);
@@ -317,7 +354,7 @@ public class NotificationCenter {
             arrayList.add(observer);
             return;
         }
-        ArrayList<Object> objects = observers.get(id);
+        ArrayList<NotificationCenterDelegate> objects = observers.get(id);
         if (objects == null) {
             observers.put(id, (objects = new ArrayList<>()));
         }
@@ -327,14 +364,14 @@ public class NotificationCenter {
         objects.add(observer);
     }
 
-    public void removeObserver(Object observer, int id) {
+    public void removeObserver(NotificationCenterDelegate observer, int id) {
         if (BuildVars.DEBUG_VERSION) {
             if (Thread.currentThread() != ApplicationLoader.applicationHandler.getLooper().getThread()) {
                 throw new RuntimeException("removeObserver allowed only from MAIN thread");
             }
         }
         if (broadcasting != 0) {
-            ArrayList<Object> arrayList = removeAfterBroadcast.get(id);
+            ArrayList<NotificationCenterDelegate> arrayList = removeAfterBroadcast.get(id);
             if (arrayList == null) {
                 arrayList = new ArrayList<>();
                 removeAfterBroadcast.put(id, arrayList);
@@ -342,7 +379,7 @@ public class NotificationCenter {
             arrayList.add(observer);
             return;
         }
-        ArrayList<Object> objects = observers.get(id);
+        ArrayList<NotificationCenterDelegate> objects = observers.get(id);
         if (objects != null) {
             objects.remove(observer);
         }

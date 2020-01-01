@@ -59,11 +59,11 @@ public class SharingLocationsAlert extends BottomSheet implements NotificationCe
     }
 
     public SharingLocationsAlert(Context context, SharingLocationsAlertDelegate sharingLocationsAlertDelegate) {
-        super(context, false, 0);
+        super(context, false);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.liveLocationsChanged);
         delegate = sharingLocationsAlertDelegate;
 
-        shadowDrawable = context.getResources().getDrawable(R.drawable.sheet_shadow).mutate();
+        shadowDrawable = context.getResources().getDrawable(R.drawable.sheet_shadow_round).mutate();
         shadowDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogBackground), PorterDuff.Mode.MULTIPLY));
 
         containerView = new FrameLayout(context) {
@@ -276,7 +276,7 @@ public class SharingLocationsAlert extends BottomSheet implements NotificationCe
             View view;
             switch (viewType) {
                 case 0:
-                    view = new SharingLiveLocationCell(context, false);
+                    view = new SharingLiveLocationCell(context, false, 54);
                     //view.setBackgroundDrawable(Theme.getSelectorDrawable(false));
                     break;
                 case 1:

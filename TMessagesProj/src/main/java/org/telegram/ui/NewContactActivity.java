@@ -42,6 +42,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
@@ -69,6 +70,7 @@ import static android.widget.LinearLayout.HORIZONTAL;
 
 public class NewContactActivity extends BaseFragment implements AdapterView.OnItemSelectedListener {
 
+    private LinearLayout contentLayout;
     private ActionBarMenuItem editDoneItem;
     private ContextProgressView editDoneItemProgress;
     private EditTextBoldCursor firstNameField;
@@ -92,6 +94,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
     private int countryState;
     private boolean ignoreSelection;
     private boolean donePressed;
+    private String initialPhoneNumber;
 
     private final static int done_button = 1;
 
@@ -155,7 +158,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                                     }
                                     showEditDoneProgress(false, true);
                                     AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-                                    builder.setTitle(LocaleController.getString("AppName", R.string.AppName));
+                                    builder.setTitle(LocaleController.getString("ContactNotRegisteredTitle", R.string.ContactNotRegisteredTitle));
                                     builder.setMessage(LocaleController.formatString("ContactNotRegistered", R.string.ContactNotRegistered, ContactsController.formatName(inputPhoneContact.first_name, inputPhoneContact.last_name)));
                                     builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
                                     builder.setPositiveButton(LocaleController.getString("Invite", R.string.Invite), (dialog, which) -> {
@@ -181,7 +184,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
         });
 
         avatarDrawable = new AvatarDrawable();
-        avatarDrawable.setInfo(5, "", "", false);
+        avatarDrawable.setInfo(5, "", "");
 
         ActionBarMenu menu = actionBar.createMenu();
         editDoneItem = menu.addItemWithWidth(done_button, R.drawable.ic_done, AndroidUtilities.dp(56));
@@ -193,14 +196,14 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
 
         fragmentView = new ScrollView(context);
 
-        LinearLayout linearLayout = new LinearLayout(context);
-        linearLayout.setPadding(AndroidUtilities.dp(24), 0, AndroidUtilities.dp(24), 0);
-        linearLayout.setOrientation(LinearLayout.VERTICAL);
-        ((ScrollView) fragmentView).addView(linearLayout, LayoutHelper.createScroll(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
-        linearLayout.setOnTouchListener((v, event) -> true);
+        contentLayout = new LinearLayout(context);
+        contentLayout.setPadding(AndroidUtilities.dp(24), 0, AndroidUtilities.dp(24), 0);
+        contentLayout.setOrientation(LinearLayout.VERTICAL);
+        ((ScrollView) fragmentView).addView(contentLayout, LayoutHelper.createScroll(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
+        contentLayout.setOnTouchListener((v, event) -> true);
 
         FrameLayout frameLayout = new FrameLayout(context);
-        linearLayout.addView(frameLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 24, 0, 0));
+        contentLayout.addView(frameLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 24, 0, 0));
 
         avatarImage = new BackupImageView(context);
         avatarImage.setImageDrawable(avatarDrawable);
@@ -243,7 +246,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
 
             @Override
             public void afterTextChanged(Editable editable) {
-                avatarDrawable.setInfo(5, firstNameField.getText().toString(), lastNameField.getText().toString(), false);
+                avatarDrawable.setInfo(5, firstNameField.getText().toString(), lastNameField.getText().toString());
                 avatarImage.invalidate();
             }
         });
@@ -285,26 +288,25 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
 
             @Override
             public void afterTextChanged(Editable editable) {
-                avatarDrawable.setInfo(5, firstNameField.getText().toString(), lastNameField.getText().toString(), false);
+                avatarDrawable.setInfo(5, firstNameField.getText().toString(), lastNameField.getText().toString());
                 avatarImage.invalidate();
             }
         });
 
         countryButton = new TextView(context);
         countryButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
-        countryButton.setPadding(AndroidUtilities.dp(6), AndroidUtilities.dp(10), AndroidUtilities.dp(6), 0);
+        countryButton.setPadding(0, AndroidUtilities.dp(4), 0, AndroidUtilities.dp(4));
         countryButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         countryButton.setMaxLines(1);
         countryButton.setSingleLine(true);
         countryButton.setEllipsize(TextUtils.TruncateAt.END);
         countryButton.setGravity(Gravity.LEFT | Gravity.CENTER_HORIZONTAL);
-        countryButton.setBackgroundResource(R.drawable.spinner_states);
-        linearLayout.addView(countryButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 0, 24, 0, 14));
+        countryButton.setBackground(Theme.getSelectorDrawable(true));
+        contentLayout.addView(countryButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 0, 24, 0, 14));
         countryButton.setOnClickListener(view -> {
             CountrySelectActivity fragment = new CountrySelectActivity(true);
             fragment.setCountrySelectActivityDelegate((name, shortName) -> {
                 selectCountry(name);
-                AndroidUtilities.runOnUIThread(() -> AndroidUtilities.showKeyboard(phoneField), 300);
                 phoneField.requestFocus();
                 phoneField.setSelection(phoneField.length());
             });
@@ -314,11 +316,11 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
         lineView = new View(context);
         lineView.setPadding(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8), 0);
         lineView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayLine));
-        linearLayout.addView(lineView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 1, 0, -17.5f, 0, 0));
+        contentLayout.addView(lineView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 1, 0, -17.5f, 0, 0));
 
         LinearLayout linearLayout2 = new LinearLayout(context);
         linearLayout2.setOrientation(HORIZONTAL);
-        linearLayout.addView(linearLayout2, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 20, 0, 0));
+        contentLayout.addView(linearLayout2, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 20, 0, 0));
 
         textView = new TextView(context);
         textView.setText("+");
@@ -374,14 +376,14 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                             country = codesMap.get(sub);
                             if (country != null) {
                                 ok = true;
-                                textToSet = text.substring(a, text.length()) + phoneField.getText().toString();
+                                textToSet = text.substring(a) + phoneField.getText().toString();
                                 codeField.setText(text = sub);
                                 break;
                             }
                         }
                         if (!ok) {
                             ignoreOnTextChange = true;
-                            textToSet = text.substring(1, text.length()) + phoneField.getText().toString();
+                            textToSet = text.substring(1) + phoneField.getText().toString();
                             codeField.setText(text = text.substring(0, 1));
                         }
                     }
@@ -408,7 +410,9 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                         codeField.setSelection(codeField.getText().length());
                     }
                     if (textToSet != null) {
-                        phoneField.requestFocus();
+                        if (initialPhoneNumber == null) {
+                            phoneField.requestFocus();
+                        }
                         phoneField.setText(textToSet);
                         phoneField.setSelection(phoneField.length());
                     }
@@ -474,7 +478,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                 String phoneChars = "0123456789";
                 String str = phoneField.getText().toString();
                 if (characterAction == 3) {
-                    str = str.substring(0, actionPosition) + str.substring(actionPosition + 1, str.length());
+                    str = str.substring(0, actionPosition) + str.substring(actionPosition + 1);
                     start--;
                 }
                 StringBuilder builder = new StringBuilder(str.length());
@@ -551,53 +555,54 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
 
         Collections.sort(countriesArray, String::compareTo);
 
-        String country = null;
-
-        try {
-            TelephonyManager telephonyManager = (TelephonyManager) ApplicationLoader.applicationContext.getSystemService(Context.TELEPHONY_SERVICE);
-            if (telephonyManager != null) {
-                country = telephonyManager.getSimCountryIso().toUpperCase();
+        if (!TextUtils.isEmpty(initialPhoneNumber)) {
+            codeField.setText(initialPhoneNumber);
+            initialPhoneNumber = null;
+        } else {
+            String country = null;
+            try {
+                TelephonyManager telephonyManager = (TelephonyManager) ApplicationLoader.applicationContext.getSystemService(Context.TELEPHONY_SERVICE);
+                if (telephonyManager != null) {
+                    country = telephonyManager.getSimCountryIso().toUpperCase();
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
             }
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
 
-        if (country != null) {
-            String countryName = languageMap.get(country);
-            if (countryName != null) {
-                int index = countriesArray.indexOf(countryName);
-                if (index != -1) {
-                    codeField.setText(countriesMap.get(countryName));
-                    countryState = 0;
+            if (country != null) {
+                String countryName = languageMap.get(country);
+                if (countryName != null) {
+                    int index = countriesArray.indexOf(countryName);
+                    if (index != -1) {
+                        codeField.setText(countriesMap.get(countryName));
+                        countryState = 0;
+                    }
                 }
             }
-        }
-        if (codeField.length() == 0) {
-            countryButton.setText(LocaleController.getString("ChooseCountry", R.string.ChooseCountry));
-            phoneField.setHintText(null);
-            countryState = 1;
+            if (codeField.length() == 0) {
+                countryButton.setText(LocaleController.getString("ChooseCountry", R.string.ChooseCountry));
+                phoneField.setHintText(null);
+                countryState = 1;
+            }
         }
 
         return fragmentView;
     }
 
     @Override
-    public void onResume() {
-        super.onResume();
-        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-        boolean animations = preferences.getBoolean("view_animations", true);
-        if (!animations) {
-            firstNameField.requestFocus();
-            AndroidUtilities.showKeyboard(firstNameField);
+    public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
+        if (isOpen) {
+            View focusedView = contentLayout.findFocus();
+            if (focusedView == null) {
+                firstNameField.requestFocus();
+                focusedView = firstNameField;
+            }
+            AndroidUtilities.showKeyboard(focusedView);
         }
     }
 
-    @Override
-    public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
-        if (isOpen) {
-            firstNameField.requestFocus();
-            AndroidUtilities.showKeyboard(firstNameField);
-        }
+    public void setInitialPhoneNumber(String value) {
+        initialPhoneNumber = value;
     }
 
     public void selectCountry(String name) {
@@ -637,23 +642,23 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
         }
         if (!animated) {
             if (show) {
-                editDoneItem.getImageView().setScaleX(0.1f);
-                editDoneItem.getImageView().setScaleY(0.1f);
-                editDoneItem.getImageView().setAlpha(0.0f);
+                editDoneItem.getContentView().setScaleX(0.1f);
+                editDoneItem.getContentView().setScaleY(0.1f);
+                editDoneItem.getContentView().setAlpha(0.0f);
                 editDoneItemProgress.setScaleX(1.0f);
                 editDoneItemProgress.setScaleY(1.0f);
                 editDoneItemProgress.setAlpha(1.0f);
-                editDoneItem.getImageView().setVisibility(View.INVISIBLE);
+                editDoneItem.getContentView().setVisibility(View.INVISIBLE);
                 editDoneItemProgress.setVisibility(View.VISIBLE);
                 editDoneItem.setEnabled(false);
             } else {
                 editDoneItemProgress.setScaleX(0.1f);
                 editDoneItemProgress.setScaleY(0.1f);
                 editDoneItemProgress.setAlpha(0.0f);
-                editDoneItem.getImageView().setScaleX(1.0f);
-                editDoneItem.getImageView().setScaleY(1.0f);
-                editDoneItem.getImageView().setAlpha(1.0f);
-                editDoneItem.getImageView().setVisibility(View.VISIBLE);
+                editDoneItem.getContentView().setScaleX(1.0f);
+                editDoneItem.getContentView().setScaleY(1.0f);
+                editDoneItem.getContentView().setAlpha(1.0f);
+                editDoneItem.getContentView().setVisibility(View.VISIBLE);
                 editDoneItemProgress.setVisibility(View.INVISIBLE);
                 editDoneItem.setEnabled(true);
             }
@@ -663,22 +668,22 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                 editDoneItemProgress.setVisibility(View.VISIBLE);
                 editDoneItem.setEnabled(false);
                 editDoneItemAnimation.playTogether(
-                        ObjectAnimator.ofFloat(editDoneItem.getImageView(), "scaleX", 0.1f),
-                        ObjectAnimator.ofFloat(editDoneItem.getImageView(), "scaleY", 0.1f),
-                        ObjectAnimator.ofFloat(editDoneItem.getImageView(), "alpha", 0.0f),
+                        ObjectAnimator.ofFloat(editDoneItem.getContentView(), "scaleX", 0.1f),
+                        ObjectAnimator.ofFloat(editDoneItem.getContentView(), "scaleY", 0.1f),
+                        ObjectAnimator.ofFloat(editDoneItem.getContentView(), "alpha", 0.0f),
                         ObjectAnimator.ofFloat(editDoneItemProgress, "scaleX", 1.0f),
                         ObjectAnimator.ofFloat(editDoneItemProgress, "scaleY", 1.0f),
                         ObjectAnimator.ofFloat(editDoneItemProgress, "alpha", 1.0f));
             } else {
-                editDoneItem.getImageView().setVisibility(View.VISIBLE);
+                editDoneItem.getContentView().setVisibility(View.VISIBLE);
                 editDoneItem.setEnabled(true);
                 editDoneItemAnimation.playTogether(
                         ObjectAnimator.ofFloat(editDoneItemProgress, "scaleX", 0.1f),
                         ObjectAnimator.ofFloat(editDoneItemProgress, "scaleY", 0.1f),
                         ObjectAnimator.ofFloat(editDoneItemProgress, "alpha", 0.0f),
-                        ObjectAnimator.ofFloat(editDoneItem.getImageView(), "scaleX", 1.0f),
-                        ObjectAnimator.ofFloat(editDoneItem.getImageView(), "scaleY", 1.0f),
-                        ObjectAnimator.ofFloat(editDoneItem.getImageView(), "alpha", 1.0f));
+                        ObjectAnimator.ofFloat(editDoneItem.getContentView(), "scaleX", 1.0f),
+                        ObjectAnimator.ofFloat(editDoneItem.getContentView(), "scaleY", 1.0f),
+                        ObjectAnimator.ofFloat(editDoneItem.getContentView(), "alpha", 1.0f));
 
             }
             editDoneItemAnimation.addListener(new AnimatorListenerAdapter() {
@@ -688,7 +693,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                         if (!show) {
                             editDoneItemProgress.setVisibility(View.INVISIBLE);
                         } else {
-                            editDoneItem.getImageView().setVisibility(View.INVISIBLE);
+                            editDoneItem.getContentView().setVisibility(View.INVISIBLE);
                         }
                     }
                 }
@@ -709,7 +714,7 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
     public ThemeDescription[] getThemeDescriptions() {
         ThemeDescription.ThemeDescriptionDelegate cellDelegate = () -> {
             if (avatarImage != null) {
-                avatarDrawable.setInfo(5, firstNameField.getText().toString(), lastNameField.getText().toString(), false);
+                avatarDrawable.setInfo(5, firstNameField.getText().toString(), lastNameField.getText().toString());
                 avatarImage.invalidate();
             }
         };
@@ -747,11 +752,13 @@ public class NewContactActivity extends BaseFragment implements AdapterView.OnIt
                 new ThemeDescription(lineView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhiteGrayLine),
 
                 new ThemeDescription(countryButton, ThemeDescription.FLAG_TEXTCOLOR, null, null, null, null, Theme.key_windowBackgroundWhiteBlackText),
+                new ThemeDescription(countryButton, ThemeDescription.FLAG_SELECTORWHITE, null, null, null, null, Theme.key_windowBackgroundWhite),
+                new ThemeDescription(countryButton, ThemeDescription.FLAG_SELECTORWHITE, null, null, null, null, Theme.key_listSelector),
 
                 new ThemeDescription(editDoneItemProgress, 0, null, null, null, null, Theme.key_contextProgressInner2),
                 new ThemeDescription(editDoneItemProgress, 0, null, null, null, null, Theme.key_contextProgressOuter2),
 
-                new ThemeDescription(null, 0, null, null, new Drawable[]{Theme.avatar_broadcastDrawable, Theme.avatar_savedDrawable}, cellDelegate, Theme.key_avatar_text),
+                new ThemeDescription(null, 0, null, null, new Drawable[]{Theme.avatar_savedDrawable}, cellDelegate, Theme.key_avatar_text),
                 new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_avatar_backgroundRed),
                 new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_avatar_backgroundOrange),
                 new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_avatar_backgroundViolet),

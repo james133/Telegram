@@ -115,10 +115,9 @@ public class SharedPhotoVideoCell extends FrameLayout {
             selector.setBackgroundDrawable(Theme.getSelectorDrawable(false));
             addView(selector, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-            checkBox = new CheckBox2(context);
+            checkBox = new CheckBox2(context, 21);
             checkBox.setVisibility(INVISIBLE);
             checkBox.setColor(null, Theme.key_sharedMedia_photoPlaceholder, Theme.key_checkboxCheck);
-            checkBox.setSize(21);
             checkBox.setDrawUnchecked(false);
             checkBox.setDrawBackgroundAsArc(1);
             addView(checkBox, LayoutHelper.createFrame(24, 24, Gravity.RIGHT | Gravity.TOP, 0, 1, 1, 0));
@@ -144,8 +143,8 @@ public class SharedPhotoVideoCell extends FrameLayout {
             if (animated) {
                 animator = new AnimatorSet();
                 animator.playTogether(
-                        ObjectAnimator.ofFloat(container, "scaleX", checked ? 0.81f : 1.0f),
-                        ObjectAnimator.ofFloat(container, "scaleY", checked ? 0.81f : 1.0f));
+                        ObjectAnimator.ofFloat(container, View.SCALE_X, checked ? 0.81f : 1.0f),
+                        ObjectAnimator.ofFloat(container, View.SCALE_Y, checked ? 0.81f : 1.0f));
                 animator.setDuration(200);
                 animator.addListener(new AnimatorListenerAdapter() {
                     @Override
@@ -177,10 +176,7 @@ public class SharedPhotoVideoCell extends FrameLayout {
             imageView.getImageReceiver().setVisible(!PhotoViewer.isShowingImage(messageObject), false);
             if (messageObject.isVideo()) {
                 videoInfoContainer.setVisibility(VISIBLE);
-                int duration = messageObject.getDuration();
-                int minutes = duration / 60;
-                int seconds = duration - minutes * 60;
-                videoTextView.setText(String.format("%d:%02d", minutes, seconds));
+                videoTextView.setText(AndroidUtilities.formatShortDuration(messageObject.getDuration()));
                 TLRPC.Document document = messageObject.getDocument();
                 TLRPC.PhotoSize thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, 50);
                 TLRPC.PhotoSize qualityThumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, 320);
@@ -333,12 +329,7 @@ public class SharedPhotoVideoCell extends FrameLayout {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int itemWidth;
-        if (AndroidUtilities.isTablet()) {
-            itemWidth = (AndroidUtilities.dp(490) - (itemsCount - 1) * AndroidUtilities.dp(2)) / itemsCount;
-        } else {
-            itemWidth = (AndroidUtilities.displaySize.x - (itemsCount - 1) * AndroidUtilities.dp(2)) / itemsCount;
-        }
+        final int itemWidth = getItemSize(itemsCount);
 
         ignoreLayout = true;
         for (int a = 0; a < itemsCount; a++) {
@@ -361,5 +352,15 @@ public class SharedPhotoVideoCell extends FrameLayout {
         ignoreLayout = false;
 
         super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec((isFirst ? 0 : AndroidUtilities.dp(2)) + itemWidth, MeasureSpec.EXACTLY));
+    }
+
+    public static int getItemSize(int itemsCount) {
+        final int itemWidth;
+        if (AndroidUtilities.isTablet()) {
+            itemWidth = (AndroidUtilities.dp(490) - (itemsCount - 1) * AndroidUtilities.dp(2)) / itemsCount;
+        } else {
+            itemWidth = (AndroidUtilities.displaySize.x - (itemsCount - 1) * AndroidUtilities.dp(2)) / itemsCount;
+        }
+        return itemWidth;
     }
 }

@@ -7,6 +7,7 @@
 #include <android/bitmap.h>
 #include <libwebp/webp/decode.h>
 #include <libwebp/webp/encode.h>
+#include <malloc.h>
 #include "c_utils.h"
 #include "image.h"
 
@@ -59,7 +60,7 @@ jint imageOnJNILoad(JavaVM *vm, JNIEnv *env) {
 }
 
 static inline uint64_t getColors(const uint8_t *p) {
-    return p[0] + (p[1] << 16) + ((uint64_t) p[2] << 32);
+    return p[0] + (p[1] << 16) + ((uint64_t) p[2] << 32) + ((uint64_t) p[3] << 48);
 }
 
 static inline uint64_t getColors565(const uint8_t *p) {
@@ -134,6 +135,7 @@ static void fastBlurMore(int32_t w, int32_t h, int32_t stride, uint8_t *pix, int
             pix[yi] = res;              \
             pix[yi + 1] = res >> 16;    \
             pix[yi + 2] = res >> 32;    \
+            pix[yi + 3] = res >> 48;    \
             rgballsum += rgb[x + (start) * w] - 2 * rgb[x + (middle) * w] + rgb[x + (end) * w]; \
             rgbsum += rgballsum; \
             y++; \
@@ -235,6 +237,7 @@ static void fastBlur(int32_t w, int32_t h, int32_t stride, uint8_t *pix, int32_t
                 pix[yi] = res;              \
                 pix[yi + 1] = res >> 16;    \
                 pix[yi + 2] = res >> 32;    \
+                pix[yi + 3] = res >> 48;    \
                 rgballsum += rgb[x + (start) * w] - 2 * rgb[x + (middle) * w] + rgb[x + (end) * w]; \
                 rgbsum += rgballsum;        \
                 y++;                        \
@@ -711,44 +714,44 @@ JNIEXPORT jboolean Java_org_telegram_messenger_Utilities_loadWebpImage(JNIEnv *e
 #define SQUARE(i) ((i)*(i))
 inline static void zeroClearInt(int* p, size_t count) { memset(p, 0, sizeof(int) * count); }
 
-JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env, jclass class, jobject bitmap, jint radius){
-    if(radius<1) return;
+JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env, jclass class, jobject bitmap, jint radius) {
+    if (radius < 1) return;
 
     AndroidBitmapInfo info;
-    if(AndroidBitmap_getInfo(env, bitmap, &info)!=ANDROID_BITMAP_RESULT_SUCCESS)
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS)
         return;
-    if(info.format!=ANDROID_BITMAP_FORMAT_RGBA_8888)
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888)
         return;
 
-    int w=info.width;
-    int h=info.height;
-    int stride=info.stride;
+    int w = info.width;
+    int h = info.height;
+    int stride = info.stride;
 
-    unsigned char* pixels=0;
+    unsigned char *pixels = 0;
     AndroidBitmap_lockPixels(env, bitmap, (void **) &pixels);
-    if(!pixels){
+    if (!pixels) {
         return;
     }
     // Constants
     //const int radius = (int)inradius; // Transform unsigned into signed for further operations
     const int wm = w - 1;
     const int hm = h - 1;
-    const int wh = w*h;
+    const int wh = w * h;
     const int div = radius + radius + 1;
     const int r1 = radius + 1;
-    const int divsum = SQUARE((div+1)>>1);
+    const int divsum = SQUARE((div + 1) >> 1);
 
     // Small buffers
-    int stack[div*3];
-    zeroClearInt(stack, div*3);
+    int stack[div * 3];
+    zeroClearInt(stack, div * 3);
 
-    int vmin[MAX(w,h)];
-    zeroClearInt(vmin, MAX(w,h));
+    int vmin[MAX(w, h)];
+    zeroClearInt(vmin, MAX(w, h));
 
     // Large buffers
-    int *r = malloc(wh*sizeof(int));
-    int *g = malloc(wh*sizeof(int));
-    int *b = malloc(wh*sizeof(int));
+    int *r = malloc(wh * sizeof(int));
+    int *g = malloc(wh * sizeof(int));
+    int *b = malloc(wh * sizeof(int));
     zeroClearInt(r, wh);
     zeroClearInt(g, wh);
     zeroClearInt(b, wh);
@@ -756,27 +759,27 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
     const size_t dvcount = 256 * divsum;
     int *dv = malloc(sizeof(int) * dvcount);
     int i;
-    for (i = 0;(size_t)i < dvcount;i++) {
+    for (i = 0; (size_t) i < dvcount; i++) {
         dv[i] = (i / divsum);
     }
 
     // Variables
     int x, y;
     int *sir;
-    int routsum,goutsum,boutsum;
-    int rinsum,ginsum,binsum;
+    int routsum, goutsum, boutsum;
+    int rinsum, ginsum, binsum;
     int rsum, gsum, bsum, p, yp;
     int stackpointer;
     int stackstart;
     int rbs;
 
     int yw = 0, yi = 0;
-    for (y = 0;y < h;y++) {
+    for (y = 0; y < h; y++) {
         rinsum = ginsum = binsum = routsum = goutsum = boutsum = rsum = gsum = bsum = 0;
 
-        for(i = -radius;i <= radius;i++){
-            sir = &stack[(i + radius)*3];
-            int offset = (y*stride + (MIN(wm, MAX(i, 0)))*4);
+        for (i = -radius; i <= radius; i++) {
+            sir = &stack[(i + radius) * 3];
+            int offset = (y * stride + (MIN(wm, MAX(i, 0))) * 4);
             sir[0] = pixels[offset];
             sir[1] = pixels[offset + 1];
             sir[2] = pixels[offset + 2];
@@ -785,7 +788,7 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
             rsum += sir[0] * rbs;
             gsum += sir[1] * rbs;
             bsum += sir[2] * rbs;
-            if (i > 0){
+            if (i > 0) {
                 rinsum += sir[0];
                 ginsum += sir[1];
                 binsum += sir[2];
@@ -797,7 +800,7 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
         }
         stackpointer = radius;
 
-        for (x = 0;x < w;x++) {
+        for (x = 0; x < w; x++) {
             r[yi] = dv[rsum];
             g[yi] = dv[gsum];
             b[yi] = dv[bsum];
@@ -807,17 +810,17 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
             bsum -= boutsum;
 
             stackstart = stackpointer - radius + div;
-            sir = &stack[(stackstart % div)*3];
+            sir = &stack[(stackstart % div) * 3];
 
             routsum -= sir[0];
             goutsum -= sir[1];
             boutsum -= sir[2];
 
-            if (y == 0){
+            if (y == 0) {
                 vmin[x] = MIN(x + radius + 1, wm);
             }
 
-            int offset = (y*stride + vmin[x]*4);
+            int offset = (y * stride + vmin[x] * 4);
             sir[0] = pixels[offset];
             sir[1] = pixels[offset + 1];
             sir[2] = pixels[offset + 2];
@@ -830,7 +833,7 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
             bsum += binsum;
 
             stackpointer = (stackpointer + 1) % div;
-            sir = &stack[(stackpointer % div)*3];
+            sir = &stack[(stackpointer % div) * 3];
 
             routsum += sir[0];
             goutsum += sir[1];
@@ -845,13 +848,13 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
         yw += w;
     }
 
-    for (x = 0;x < w;x++) {
+    for (x = 0; x < w; x++) {
         rinsum = ginsum = binsum = routsum = goutsum = boutsum = rsum = gsum = bsum = 0;
-        yp = -radius*w;
-        for(i = -radius;i <= radius;i++) {
+        yp = -radius * w;
+        for (i = -radius; i <= radius; i++) {
             yi = MAX(0, yp) + x;
 
-            sir = &stack[(i + radius)*3];
+            sir = &stack[(i + radius) * 3];
 
             sir[0] = r[yi];
             sir[1] = g[yi];
@@ -859,9 +862,9 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
 
             rbs = r1 - abs(i);
 
-            rsum += r[yi]*rbs;
-            gsum += g[yi]*rbs;
-            bsum += b[yi]*rbs;
+            rsum += r[yi] * rbs;
+            gsum += g[yi] * rbs;
+            bsum += b[yi] * rbs;
 
             if (i > 0) {
                 rinsum += sir[0];
@@ -878,9 +881,9 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
             }
         }
         stackpointer = radius;
-        for (y = 0;y < h;y++) {
-            int offset = stride*y+x*4;
-            pixels[offset]     = dv[rsum];
+        for (y = 0; y < h; y++) {
+            int offset = stride * y + x * 4;
+            pixels[offset] = dv[rsum];
             pixels[offset + 1] = dv[gsum];
             pixels[offset + 2] = dv[bsum];
             rsum -= routsum;
@@ -888,14 +891,14 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
             bsum -= boutsum;
 
             stackstart = stackpointer - radius + div;
-            sir = &stack[(stackstart % div)*3];
+            sir = &stack[(stackstart % div) * 3];
 
             routsum -= sir[0];
             goutsum -= sir[1];
             boutsum -= sir[2];
 
-            if (x == 0){
-                vmin[y] = (MIN(y + r1, hm))*w;
+            if (x == 0) {
+                vmin[y] = (MIN(y + r1, hm)) * w;
             }
             p = x + vmin[y];
 
@@ -912,7 +915,7 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
             bsum += binsum;
 
             stackpointer = (stackpointer + 1) % div;
-            sir = &stack[stackpointer*3];
+            sir = &stack[stackpointer * 3];
 
             routsum += sir[0];
             goutsum += sir[1];
@@ -931,4 +934,105 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_stackBlurBitmap(JNIEnv* env
     free(b);
     free(dv);
     AndroidBitmap_unlockPixels(env, bitmap);
+}
+
+JNIEXPORT void Java_org_telegram_messenger_Utilities_drawDitheredGradient(JNIEnv* env, jclass class, jobject bitmap, jintArray colors, jint startX, jint startY, jint endX, jint endY) {
+    AndroidBitmapInfo info;
+    void* pixelsBuffer;
+    int reason;
+
+    if ((reason = AndroidBitmap_getInfo(env, bitmap, &info)) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        (*env)->ThrowNew(env, jclass_RuntimeException, "AndroidBitmap_getInfo failed with a reason: " + reason);
+        return;
+    }
+
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        (*env)->ThrowNew(env, jclass_RuntimeException, "Bitmap must be in ARGB_8888 format");
+        return;
+    }
+
+    if ((reason = AndroidBitmap_lockPixels(env, bitmap, &pixelsBuffer)) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        (*env)->ThrowNew(env, jclass_RuntimeException, "AndroidBitmap_lockPixels failed with a reason: " + reason);
+        return;
+    }
+
+    uint8_t i, j, n;
+
+    // gradient colors extracting
+    jint *colorsBuffer = (*env)->GetIntArrayElements(env, colors, 0);
+    uint8_t *colorsComponents = (uint8_t *) colorsBuffer;
+    float colorsF[4][2];
+    for (i = 0; i < 4; i++) {
+        // swap red and green channels
+        n = (uint8_t) (i == 0 ? 2 : (i == 2 ? 0 : i));
+        for (j = 0; j < 2; j++) {
+            colorsF[n][j] = colorsComponents[j * 4 + i] / 255.F;
+        }
+    }
+    (*env)->ReleaseIntArrayElements(env, colors, colorsBuffer, JNI_ABORT);
+
+    // gradient vector
+    const int32_t vx = endX - startX;
+    const int32_t vy = endY - startY;
+    const float vSquaredMag = vx * vx + vy * vy;
+
+    float noise, fraction, error, componentF;
+    float *pixelsComponentsF = malloc(info.height * info.stride * 4 * sizeof(float));
+    memset(pixelsComponentsF, 0, info.height * info.stride * 4 * sizeof(float));
+    uint8_t *bitmapPixelsComponents = (uint8_t *) pixelsBuffer;
+
+    int32_t x, y;
+    int32_t offset;
+    int32_t position;
+    for (y = 0; y < info.height; y++) {
+        offset = y * info.stride;
+        for (x = 0; x < info.width; x++) {
+            // triangular probability density function dither noise
+            noise = (rand() - rand()) / 255.F / RAND_MAX;
+
+            // alpha channel
+            bitmapPixelsComponents[offset + x * 4 + 3] = 255;
+
+            for (i = 0; i < 3; i++) {
+                position = offset + x * 4 + i;
+                fraction = (vx * (x - startX) + vy * (y - startY)) / vSquaredMag;
+
+                // gradient interpolation and noise
+                pixelsComponentsF[position] += colorsF[i][0] + fraction * (colorsF[i][1] - colorsF[i][0]) + noise;
+
+                // clamp
+                if (pixelsComponentsF[position] > 1.F) {
+                    pixelsComponentsF[position] = 1.F;
+                } else if (pixelsComponentsF[position] < 0.F) {
+                    pixelsComponentsF[position] = 0.F;
+                }
+
+                // draw
+                componentF = roundf(pixelsComponentsF[position] * 255.F);
+                bitmapPixelsComponents[position] = (uint8_t) componentF;
+
+                // floyd-steinberg dithering
+                error = pixelsComponentsF[position] - componentF / 255.F;
+                if (x + 1 < info.width) {
+                    pixelsComponentsF[position + 4] += error * 7.F / 16.F;
+                    if (y + 1 < info.height) {
+                        pixelsComponentsF[position + info.height + 4] += error * 1.F / 16.F;
+                    }
+                }
+                if (y + 1 < info.height) {
+                    pixelsComponentsF[position + info.height] += error * 5.F / 16.F;
+                    if (x - 1 >= 0) {
+                        pixelsComponentsF[position + info.height - 4] += error * 3.F / 16.F;
+                    }
+                }
+            }
+        }
+    }
+
+    free(pixelsComponentsF);
+
+    if ((reason = AndroidBitmap_unlockPixels(env, bitmap)) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        (*env)->ThrowNew(env, jclass_RuntimeException, "AndroidBitmap_unlockPixels failed with a reason: " + reason);
+        return;
+    }
 }

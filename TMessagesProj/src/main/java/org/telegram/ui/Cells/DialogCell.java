@@ -28,16 +28,9 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.Interpolator;
 
-import com.airbnb.lottie.LottieDrawable;
-import com.airbnb.lottie.LottieProperty;
-import com.airbnb.lottie.SimpleColorFilter;
-import com.airbnb.lottie.model.KeyPath;
-import com.airbnb.lottie.value.LottieValueCallback;
-
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.ChatObject;
-import org.telegram.messenger.DataQuery;
+import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
@@ -54,8 +47,11 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.PullForegroundDrawable;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.CheckBox2;
+import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.StaticLayoutEx;
 import org.telegram.ui.Components.TypefaceSpan;
 import org.telegram.ui.DialogsActivity;
@@ -77,6 +73,8 @@ public class DialogCell extends BaseCell {
         public boolean isMedia;
         public boolean sent;
     }
+
+    private int paintIndex;
 
     private int currentAccount = UserConfig.selectedAccount;
     private CustomDialog customDialog;
@@ -110,7 +108,7 @@ public class DialogCell extends BaseCell {
     private int bottomClip;
     private float translationX;
     private boolean isSliding;
-    private Drawable translationDrawable;
+    private RLottieDrawable translationDrawable;
     private boolean translationAnimationStarted;
     private boolean drawRevealBackground;
     private float currentRevealProgress;
@@ -122,6 +120,7 @@ public class DialogCell extends BaseCell {
     private boolean animatingArchiveAvatar;
     private float animatingArchiveAvatarProgress;
     private BounceInterpolator interpolator = new BounceInterpolator();
+    private PullForegroundDrawable archivedChatsDrawable;
 
     private TLRPC.User user;
     private TLRPC.Chat chat;
@@ -135,6 +134,8 @@ public class DialogCell extends BaseCell {
     public boolean useSeparator;
     public boolean fullSeparator;
     public boolean fullSeparator2;
+
+    private boolean useMeForMyMessages;
 
     private int nameLeft;
     private StaticLayout nameLayout;
@@ -222,9 +223,8 @@ public class DialogCell extends BaseCell {
         useForceThreeLines = forceThreeLines;
 
         if (needCheck) {
-            checkBox = new CheckBox2(context);
+            checkBox = new CheckBox2(context, 21);
             checkBox.setColor(null, Theme.key_windowBackgroundWhite, Theme.key_checkboxCheck);
-            checkBox.setSize(21);
             checkBox.setDrawUnchecked(false);
             checkBox.setDrawBackgroundAsArc(3);
             addView(checkBox);
@@ -237,6 +237,9 @@ public class DialogCell extends BaseCell {
         if (dialog instanceof TLRPC.TL_dialogFolder) {
             TLRPC.TL_dialogFolder dialogFolder = (TLRPC.TL_dialogFolder) dialog;
             currentDialogFolderId = dialogFolder.folder.id;
+            if (archivedChatsDrawable != null) {
+                archivedChatsDrawable.setCell(this);
+            }
         } else {
             currentDialogFolderId = 0;
         }
@@ -263,9 +266,10 @@ public class DialogCell extends BaseCell {
         onlineProgress = isOnline ? 1.0f : 0.0f;
     }
 
-    public void setDialog(long dialog_id, MessageObject messageObject, int date) {
+    public void setDialog(long dialog_id, MessageObject messageObject, int date, boolean useMe) {
         currentDialogId = dialog_id;
         message = messageObject;
+        useMeForMyMessages = useMe;
         isDialogCell = false;
         lastMessageDate = date;
         currentEditDate = messageObject != null ? messageObject.messageOwner.edit_date : 0;
@@ -302,12 +306,9 @@ public class DialogCell extends BaseCell {
         reorderIconProgress = drawPin && drawReorder ? 1.0f : 0.0f;
         avatarImage.onDetachedFromWindow();
         if (translationDrawable != null) {
-            if (translationDrawable instanceof LottieDrawable) {
-                LottieDrawable lottieDrawable = (LottieDrawable) translationDrawable;
-                lottieDrawable.stop();
-                lottieDrawable.setProgress(0.0f);
-                lottieDrawable.setCallback(null);
-            }
+            translationDrawable.stop();
+            translationDrawable.setProgress(0.0f);
+            translationDrawable.setCallback(null);
             translationDrawable = null;
             translationAnimationStarted = false;
         }
@@ -317,6 +318,10 @@ public class DialogCell extends BaseCell {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         avatarImage.onAttachedToWindow();
+        resetPinnedArchiveState();
+    }
+
+    public void resetPinnedArchiveState() {
         archiveHidden = SharedConfig.archiveHidden;
         archiveBackgroundProgress = archiveHidden ? 0.0f : 1.0f;
         avatarDrawable.setArchivedAvatarHiddenProgress(archiveBackgroundProgress);
@@ -326,6 +331,7 @@ public class DialogCell extends BaseCell {
         attachedToWindow = true;
         cornerProgress = 0.0f;
         setTranslationX(0);
+        setTranslationY(0);
     }
 
     @Override
@@ -407,24 +413,26 @@ public class DialogCell extends BaseCell {
                 break;
             }
         }
-        return Emoji.replaceEmoji(builder, Theme.dialogs_messagePaint.getFontMetricsInt(), AndroidUtilities.dp(17), false);
+        return Emoji.replaceEmoji(builder, Theme.dialogs_messagePaint[paintIndex].getFontMetricsInt(), AndroidUtilities.dp(17), false);
     }
 
     public void buildLayout() {
         if (useForceThreeLines || SharedConfig.useThreeLinesLayout) {
-            Theme.dialogs_namePaint.setTextSize(AndroidUtilities.dp(16));
-            Theme.dialogs_nameEncryptedPaint.setTextSize(AndroidUtilities.dp(16));
-            Theme.dialogs_messagePaint.setTextSize(AndroidUtilities.dp(15));
-            Theme.dialogs_messagePrintingPaint.setTextSize(AndroidUtilities.dp(15));
+            Theme.dialogs_namePaint[1].setTextSize(AndroidUtilities.dp(16));
+            Theme.dialogs_nameEncryptedPaint[1].setTextSize(AndroidUtilities.dp(16));
+            Theme.dialogs_messagePaint[1].setTextSize(AndroidUtilities.dp(15));
+            Theme.dialogs_messagePrintingPaint[1].setTextSize(AndroidUtilities.dp(15));
 
-            Theme.dialogs_messagePaint.setColor(Theme.dialogs_messagePaint.linkColor = Theme.getColor(Theme.key_chats_message_threeLines));
+            Theme.dialogs_messagePaint[1].setColor(Theme.dialogs_messagePaint[1].linkColor = Theme.getColor(Theme.key_chats_message_threeLines));
+            paintIndex = 1;
         } else {
-            Theme.dialogs_namePaint.setTextSize(AndroidUtilities.dp(17));
-            Theme.dialogs_nameEncryptedPaint.setTextSize(AndroidUtilities.dp(17));
-            Theme.dialogs_messagePaint.setTextSize(AndroidUtilities.dp(16));
-            Theme.dialogs_messagePrintingPaint.setTextSize(AndroidUtilities.dp(16));
+            Theme.dialogs_namePaint[0].setTextSize(AndroidUtilities.dp(17));
+            Theme.dialogs_nameEncryptedPaint[0].setTextSize(AndroidUtilities.dp(17));
+            Theme.dialogs_messagePaint[0].setTextSize(AndroidUtilities.dp(16));
+            Theme.dialogs_messagePrintingPaint[0].setTextSize(AndroidUtilities.dp(16));
 
-            Theme.dialogs_messagePaint.setColor(Theme.dialogs_messagePaint.linkColor = Theme.getColor(Theme.key_chats_message));
+            Theme.dialogs_messagePaint[0].setColor(Theme.dialogs_messagePaint[0].linkColor = Theme.getColor(Theme.key_chats_message));
+            paintIndex = 0;
         }
 
         currentDialogFolderDialogsCount = 0;
@@ -438,7 +446,7 @@ public class DialogCell extends BaseCell {
         if (isDialogCell) {
             printingString = MessagesController.getInstance(currentAccount).printingStrings.get(currentDialogId);
         }
-        TextPaint currentMessagePaint = Theme.dialogs_messagePaint;
+        TextPaint currentMessagePaint = Theme.dialogs_messagePaint[paintIndex];
         boolean checkMessage = true;
 
         drawNameGroup = false;
@@ -448,7 +456,7 @@ public class DialogCell extends BaseCell {
         drawVerified = false;
         drawScam = false;
         drawPinBackground = false;
-        boolean showChecks = !UserObject.isUserSelf(user);
+        boolean showChecks = !UserObject.isUserSelf(user) && !useMeForMyMessages;
         boolean drawTime = true;
 
         String messageFormat;
@@ -540,7 +548,7 @@ public class DialogCell extends BaseCell {
                 checkMessage = false;
                 SpannableStringBuilder stringBuilder;
                 if (customDialog.isMedia) {
-                    currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                    currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                     stringBuilder = SpannableStringBuilder.valueOf(String.format(messageFormat, message.messageText));
                     stringBuilder.setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_chats_attachMessage)), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 } else {
@@ -554,11 +562,11 @@ public class DialogCell extends BaseCell {
                         stringBuilder = SpannableStringBuilder.valueOf(String.format(messageFormat, mess.replace('\n', ' '), messageNameString));
                     }
                 }
-                messageString = Emoji.replaceEmoji(stringBuilder, Theme.dialogs_messagePaint.getFontMetricsInt(), AndroidUtilities.dp(20), false);
+                messageString = Emoji.replaceEmoji(stringBuilder, Theme.dialogs_messagePaint[paintIndex].getFontMetricsInt(), AndroidUtilities.dp(20), false);
             } else {
                 messageString = customDialog.message;
                 if (customDialog.isMedia) {
-                    currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                    currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                 }
             }
 
@@ -704,7 +712,7 @@ public class DialogCell extends BaseCell {
             }
 
             if (isDialogCell) {
-                draftMessage = DataQuery.getInstance(currentAccount).getDraft(currentDialogId);
+                draftMessage = MediaDataController.getInstance(currentAccount).getDraft(currentDialogId);
                 if (draftMessage != null && (TextUtils.isEmpty(draftMessage.message) && draftMessage.reply_to_msg_id == 0 || lastDate > draftMessage.date && unreadCount != 0) ||
                         ChatObject.isChannel(chat) && !chat.megagroup && !chat.creator && (chat.admin_rights == null || !chat.admin_rights.post_messages) ||
                         chat != null && (chat.left || chat.kicked)) {
@@ -716,7 +724,7 @@ public class DialogCell extends BaseCell {
 
             if (printingString != null) {
                 lastPrintString = messageString = printingString;
-                currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
             } else {
                 lastPrintString = null;
                 if (draftMessage != null) {
@@ -742,32 +750,24 @@ public class DialogCell extends BaseCell {
                             stringBuilder = SpannableStringBuilder.valueOf(String.format(messageFormat, mess.replace('\n', ' '), messageNameString));
                             stringBuilder.setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_chats_draft)), 0, messageNameString.length() + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         }
-                        messageString = Emoji.replaceEmoji(stringBuilder, Theme.dialogs_messagePaint.getFontMetricsInt(), AndroidUtilities.dp(20), false);
+                        messageString = Emoji.replaceEmoji(stringBuilder, Theme.dialogs_messagePaint[paintIndex].getFontMetricsInt(), AndroidUtilities.dp(20), false);
                     }
                 } else {
                     if (clearingDialog) {
-                        currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                        currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                         messageString = LocaleController.getString("HistoryCleared", R.string.HistoryCleared);
                     } else if (message == null) {
                         if (encryptedChat != null) {
-                            currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                            currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                             if (encryptedChat instanceof TLRPC.TL_encryptedChatRequested) {
                                 messageString = LocaleController.getString("EncryptionProcessing", R.string.EncryptionProcessing);
                             } else if (encryptedChat instanceof TLRPC.TL_encryptedChatWaiting) {
-                                if (user != null && user.first_name != null) {
-                                    messageString = LocaleController.formatString("AwaitingEncryption", R.string.AwaitingEncryption, user.first_name);
-                                } else {
-                                    messageString = LocaleController.formatString("AwaitingEncryption", R.string.AwaitingEncryption, "");
-                                }
+                                messageString = LocaleController.formatString("AwaitingEncryption", R.string.AwaitingEncryption, UserObject.getFirstName(user));
                             } else if (encryptedChat instanceof TLRPC.TL_encryptedChatDiscarded) {
                                 messageString = LocaleController.getString("EncryptionRejected", R.string.EncryptionRejected);
                             } else if (encryptedChat instanceof TLRPC.TL_encryptedChat) {
                                 if (encryptedChat.admin_id == UserConfig.getInstance(currentAccount).getClientUserId()) {
-                                    if (user != null && user.first_name != null) {
-                                        messageString = LocaleController.formatString("EncryptedChatStartedOutgoing", R.string.EncryptedChatStartedOutgoing, user.first_name);
-                                    } else {
-                                        messageString = LocaleController.formatString("EncryptedChatStartedOutgoing", R.string.EncryptedChatStartedOutgoing, "");
-                                    }
+                                    messageString = LocaleController.formatString("EncryptedChatStartedOutgoing", R.string.EncryptedChatStartedOutgoing, UserObject.getFirstName(user));
                                 } else {
                                     messageString = LocaleController.getString("EncryptedChatStartedIncoming", R.string.EncryptedChatStartedIncoming);
                                 }
@@ -798,7 +798,7 @@ public class DialogCell extends BaseCell {
                             } else {
                                 messageString = message.messageText;
                             }
-                            currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                            currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                         } else {
                             if (chat != null && chat.id > 0 && fromChat == null) {
                                 if (message.isOutOwner()) {
@@ -839,7 +839,7 @@ public class DialogCell extends BaseCell {
                                     }
                                     stringBuilder = SpannableStringBuilder.valueOf(String.format(messageFormat, emoji + mess.replace('\n', ' '), messageNameString));
                                 } else if (message.messageOwner.media != null && !message.isMediaEmpty()) {
-                                    currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                                    currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                                     CharSequence innerMessage;
                                     if (message.messageOwner.media instanceof TLRPC.TL_messageMediaGame) {
                                         if (Build.VERSION.SDK_INT >= 18) {
@@ -878,7 +878,7 @@ public class DialogCell extends BaseCell {
                                         FileLog.e(e);
                                     }
                                 }
-                                messageString = Emoji.replaceEmoji(stringBuilder, Theme.dialogs_messagePaint.getFontMetricsInt(), AndroidUtilities.dp(20), false);
+                                messageString = Emoji.replaceEmoji(stringBuilder, Theme.dialogs_messagePaint[paintIndex].getFontMetricsInt(), AndroidUtilities.dp(20), false);
                             } else {
                                 if (message.messageOwner.media instanceof TLRPC.TL_messageMediaPhoto && message.messageOwner.media.photo instanceof TLRPC.TL_photoEmpty && message.messageOwner.media.ttl_seconds != 0) {
                                     messageString = LocaleController.getString("AttachPhotoExpired", R.string.AttachPhotoExpired);
@@ -907,7 +907,7 @@ public class DialogCell extends BaseCell {
                                         messageString = message.messageText;
                                     }
                                     if (message.messageOwner.media != null && !message.isMediaEmpty()) {
-                                        currentMessagePaint = Theme.dialogs_messagePrintingPaint;
+                                        currentMessagePaint = Theme.dialogs_messagePrintingPaint[paintIndex];
                                     }
                                 }
                             }
@@ -1010,19 +1010,13 @@ public class DialogCell extends BaseCell {
                     nameString = chat.title;
                 } else if (user != null) {
                     if (UserObject.isUserSelf(user)) {
-                        if (dialogsType == 3) {
-                            drawPinBackground = true;
-                        }
-                        nameString = LocaleController.getString("SavedMessages", R.string.SavedMessages);
-                    } else if (user.id / 1000 != 777 && user.id / 1000 != 333 && ContactsController.getInstance(currentAccount).contactsDict.get(user.id) == null) {
-                        if (ContactsController.getInstance(currentAccount).contactsDict.size() == 0 && (!ContactsController.getInstance(currentAccount).contactsLoaded || ContactsController.getInstance(currentAccount).isLoadingContacts())) {
-                            nameString = UserObject.getUserName(user);
+                        if (useMeForMyMessages) {
+                            nameString = LocaleController.getString("FromYou", R.string.FromYou);
                         } else {
-                            if (user.phone != null && user.phone.length() != 0) {
-                                nameString = PhoneFormat.getInstance().format("+" + user.phone);
-                            } else {
-                                nameString = UserObject.getUserName(user);
+                            if (dialogsType == 3) {
+                                drawPinBackground = true;
                             }
+                            nameString = LocaleController.getString("SavedMessages", R.string.SavedMessages);
                         }
                     } else {
                         nameString = UserObject.getUserName(user);
@@ -1120,8 +1114,8 @@ public class DialogCell extends BaseCell {
 
         nameWidth = Math.max(AndroidUtilities.dp(12), nameWidth);
         try {
-            CharSequence nameStringFinal = TextUtils.ellipsize(nameString.replace('\n', ' '), Theme.dialogs_namePaint, nameWidth - AndroidUtilities.dp(12), TextUtils.TruncateAt.END);
-            nameLayout = new StaticLayout(nameStringFinal, Theme.dialogs_namePaint, nameWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+            CharSequence nameStringFinal = TextUtils.ellipsize(nameString.replace('\n', ' '), Theme.dialogs_namePaint[paintIndex], nameWidth - AndroidUtilities.dp(12), TextUtils.TruncateAt.END);
+            nameLayout = new StaticLayout(nameStringFinal, Theme.dialogs_namePaint[paintIndex], nameWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -1241,8 +1235,10 @@ public class DialogCell extends BaseCell {
             }
             if (!useForceThreeLines && !SharedConfig.useThreeLinesLayout || messageNameString != null) {
                 mess = mess.replace('\n', ' ');
+            } else {
+                mess = mess.replace("\n\n", "\n");
             }
-            messageString = Emoji.replaceEmoji(mess, Theme.dialogs_messagePaint.getFontMetricsInt(), AndroidUtilities.dp(17), false);
+            messageString = Emoji.replaceEmoji(mess, Theme.dialogs_messagePaint[paintIndex].getFontMetricsInt(), AndroidUtilities.dp(17), false);
         }
         messageWidth = Math.max(AndroidUtilities.dp(12), messageWidth);
         if ((useForceThreeLines || SharedConfig.useThreeLinesLayout) && messageNameString != null && (currentDialogFolderId == 0 || currentDialogFolderDialogsCount == 1)) {
@@ -1266,7 +1262,7 @@ public class DialogCell extends BaseCell {
             if ((useForceThreeLines || SharedConfig.useThreeLinesLayout) && currentDialogFolderId != 0 && currentDialogFolderDialogsCount > 1) {
                 messageStringFinal = messageNameString;
                 messageNameString = null;
-                currentMessagePaint = Theme.dialogs_messagePaint;
+                currentMessagePaint = Theme.dialogs_messagePaint[paintIndex];
             } else if (!useForceThreeLines && !SharedConfig.useThreeLinesLayout || messageNameString != null) {
                 messageStringFinal = TextUtils.ellipsize(messageString, currentMessagePaint, messageWidth - AndroidUtilities.dp(12), TextUtils.TruncateAt.END);
             } else {
@@ -1377,7 +1373,7 @@ public class DialogCell extends BaseCell {
         if (index < dialogsArray.size()) {
             TLRPC.Dialog dialog = dialogsArray.get(index);
             TLRPC.Dialog nextDialog = index + 1 < dialogsArray.size() ? dialogsArray.get(index + 1) : null;
-            TLRPC.DraftMessage newDraftMessage = DataQuery.getInstance(currentAccount).getDraft(currentDialogId);
+            TLRPC.DraftMessage newDraftMessage = MediaDataController.getInstance(currentAccount).getDraft(currentDialogId);
             MessageObject newMessageObject;
             if (currentDialogFolderId != 0) {
                 newMessageObject = findFolderTopMessage();
@@ -1417,7 +1413,6 @@ public class DialogCell extends BaseCell {
         }
         animatingArchiveAvatar = true;
         animatingArchiveAvatarProgress = 0.0f;
-        Theme.dialogs_archiveAvatarDrawable.setCallback(this);
         Theme.dialogs_archiveAvatarDrawable.setProgress(0.0f);
         Theme.dialogs_archiveAvatarDrawable.start();
         invalidate();
@@ -1440,12 +1435,16 @@ public class DialogCell extends BaseCell {
                 if (object != null && (maxMessage == null || object.messageOwner.date > maxMessage.messageOwner.date)) {
                     maxMessage = object;
                 }
-                if (dialog.pinnedNum == 0) {
+                if (dialog.pinnedNum == 0 && maxMessage != null) {
                     break;
                 }
             }
         }
         return maxMessage;
+    }
+
+    public boolean isFolderCell() {
+        return currentDialogFolderId != 0;
     }
 
     public void update(int mask) {
@@ -1455,7 +1454,7 @@ public class DialogCell extends BaseCell {
             unreadCount = customDialog.unread_count;
             drawPin = customDialog.pinned;
             dialogMuted = customDialog.muted;
-            avatarDrawable.setInfo(customDialog.id, customDialog.name, null, false);
+            avatarDrawable.setInfo(customDialog.id, customDialog.name, null);
             avatarImage.setImage(null, "50_50", avatarDrawable, null, 0);
         } else {
             if (isDialogCell) {
@@ -1529,7 +1528,8 @@ public class DialogCell extends BaseCell {
                     if (message != null && lastUnreadState != message.isUnread()) {
                         lastUnreadState = message.isUnread();
                         continueUpdate = true;
-                    } else if (isDialogCell) {
+                    }
+                    if (isDialogCell) {
                         TLRPC.Dialog dialog = MessagesController.getInstance(currentAccount).dialogs_dict.get(currentDialogId);
                         if (dialog != null && (unreadCount != dialog.unread_count || markUnread != dialog.unread_mark || mentionCount != dialog.unread_mentions_count)) {
                             unreadCount = dialog.unread_count;
@@ -1574,20 +1574,16 @@ public class DialogCell extends BaseCell {
                 int lower_id = (int) dialogId;
                 int high_id = (int) (dialogId >> 32);
                 if (lower_id != 0) {
-                    if (high_id == 1) {
-                        chat = MessagesController.getInstance(currentAccount).getChat(lower_id);
-                    } else {
-                        if (lower_id < 0) {
-                            chat = MessagesController.getInstance(currentAccount).getChat(-lower_id);
-                            if (!isDialogCell && chat != null && chat.migrated_to != null) {
-                                TLRPC.Chat chat2 = MessagesController.getInstance(currentAccount).getChat(chat.migrated_to.channel_id);
-                                if (chat2 != null) {
-                                    chat = chat2;
-                                }
+                    if (lower_id < 0) {
+                        chat = MessagesController.getInstance(currentAccount).getChat(-lower_id);
+                        if (!isDialogCell && chat != null && chat.migrated_to != null) {
+                            TLRPC.Chat chat2 = MessagesController.getInstance(currentAccount).getChat(chat.migrated_to.channel_id);
+                            if (chat2 != null) {
+                                chat = chat2;
                             }
-                        } else {
-                            user = MessagesController.getInstance(currentAccount).getUser(lower_id);
                         }
+                    } else {
+                        user = MessagesController.getInstance(currentAccount).getUser(lower_id);
                     }
                 } else {
                     encryptedChat = MessagesController.getInstance(currentAccount).getEncryptedChat(high_id);
@@ -1595,15 +1591,19 @@ public class DialogCell extends BaseCell {
                         user = MessagesController.getInstance(currentAccount).getUser(encryptedChat.user_id);
                     }
                 }
+                if (useMeForMyMessages && user != null && message.isOutOwner()) {
+                    user = MessagesController.getInstance(currentAccount).getUser(UserConfig.getInstance(currentAccount).clientUserId);
+                }
             }
 
             if (currentDialogFolderId != 0) {
+                Theme.dialogs_archiveAvatarDrawable.setCallback(this);
                 avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_ARCHIVED);
                 avatarImage.setImage(null, null, avatarDrawable, null, user, 0);
             } else {
                 if (user != null) {
                     avatarDrawable.setInfo(user);
-                    if (UserObject.isUserSelf(user)) {
+                    if (UserObject.isUserSelf(user) && !useMeForMyMessages) {
                         avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
                         avatarImage.setImage(null, null, avatarDrawable, null, user, 0);
                     } else {
@@ -1633,10 +1633,7 @@ public class DialogCell extends BaseCell {
     public void setTranslationX(float value) {
         translationX = (int) value;
         if (translationDrawable != null && translationX == 0) {
-            if (translationDrawable instanceof LottieDrawable) {
-                LottieDrawable lottieDrawable = (LottieDrawable) translationDrawable;
-                lottieDrawable.setProgress(0.0f);
-            }
+            translationDrawable.setProgress(0.0f);
             translationAnimationStarted = false;
             archiveHidden = SharedConfig.archiveHidden;
             currentRevealProgress = 0;
@@ -1667,6 +1664,11 @@ public class DialogCell extends BaseCell {
         }
 
         boolean needInvalidate = false;
+
+        if (currentDialogFolderId != 0 && archivedChatsDrawable != null && archivedChatsDrawable.outProgress == 0.0f && translationX == 0.0f) {
+            archivedChatsDrawable.draw(canvas);
+            return;
+        }
 
         long newTime = SystemClock.uptimeMillis();
         long dt = newTime - lastUpdateTime;
@@ -1712,12 +1714,9 @@ public class DialogCell extends BaseCell {
             }
             if (!translationAnimationStarted && Math.abs(translationX) > AndroidUtilities.dp(43)) {
                 translationAnimationStarted = true;
-                if (translationDrawable instanceof LottieDrawable) {
-                    LottieDrawable lottieDrawable = (LottieDrawable) translationDrawable;
-                    lottieDrawable.setProgress(0.0f);
-                    lottieDrawable.setCallback(this);
-                    lottieDrawable.start();
-                }
+                translationDrawable.setProgress(0.0f);
+                translationDrawable.setCallback(this);
+                translationDrawable.start();
             }
 
             float tx = getMeasuredWidth() + translationX;
@@ -1725,18 +1724,12 @@ public class DialogCell extends BaseCell {
                 Theme.dialogs_pinnedPaint.setColor(backgroundColor);
                 canvas.drawRect(tx - AndroidUtilities.dp(8), 0, getMeasuredWidth(), getMeasuredHeight(), Theme.dialogs_pinnedPaint);
                 if (currentRevealProgress == 0 && Theme.dialogs_archiveDrawableRecolored) {
-                    if (Theme.dialogs_archiveDrawable instanceof LottieDrawable) {
-                        LottieDrawable lottieDrawable = (LottieDrawable) Theme.dialogs_archiveDrawable;
-                        lottieDrawable.addValueCallback(new KeyPath("Arrow", "**"), LottieProperty.COLOR_FILTER, new LottieValueCallback<>(new SimpleColorFilter(Theme.getColor(Theme.key_chats_archiveBackground))));
-                    }
+                    Theme.dialogs_archiveDrawable.setLayerColor("Arrow.**", Theme.getColor(Theme.key_chats_archiveBackground));
                     Theme.dialogs_archiveDrawableRecolored = false;
                 }
             }
             int drawableX = getMeasuredWidth() - AndroidUtilities.dp(43) - translationDrawable.getIntrinsicWidth() / 2;
             int drawableY = AndroidUtilities.dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 12 : 9);
-            if (!(translationDrawable instanceof LottieDrawable)) {
-                drawableY += AndroidUtilities.dp(2);
-            }
             int drawableCx = drawableX + translationDrawable.getIntrinsicWidth() / 2;
             int drawableCy = drawableY + translationDrawable.getIntrinsicHeight() / 2;
 
@@ -1750,10 +1743,7 @@ public class DialogCell extends BaseCell {
                 canvas.restore();
 
                 if (!Theme.dialogs_archiveDrawableRecolored) {
-                    if (Theme.dialogs_archiveDrawable instanceof LottieDrawable) {
-                        LottieDrawable lottieDrawable = (LottieDrawable) Theme.dialogs_archiveDrawable;
-                        lottieDrawable.addValueCallback(new KeyPath("Arrow", "**"), LottieProperty.COLOR_FILTER, new LottieValueCallback<>(new SimpleColorFilter(Theme.getColor(Theme.key_chats_archivePinBackground))));
-                    }
+                    Theme.dialogs_archiveDrawable.setLayerColor("Arrow.**", Theme.getColor(Theme.key_chats_archivePinBackground));
                     Theme.dialogs_archiveDrawableRecolored = true;
                 }
             }
@@ -1775,12 +1765,9 @@ public class DialogCell extends BaseCell {
 
             canvas.restore();
         } else if (translationDrawable != null) {
-            if (translationDrawable instanceof LottieDrawable) {
-                LottieDrawable lottieDrawable = (LottieDrawable) translationDrawable;
-                lottieDrawable.stop();
-                lottieDrawable.setProgress(0.0f);
-                lottieDrawable.setCallback(null);
-            }
+            translationDrawable.stop();
+            translationDrawable.setProgress(0.0f);
+            translationDrawable.setCallback(null);
             translationDrawable = null;
             translationAnimationStarted = false;
         }
@@ -1850,11 +1837,11 @@ public class DialogCell extends BaseCell {
 
         if (nameLayout != null) {
             if (currentDialogFolderId != 0) {
-                Theme.dialogs_namePaint.setColor(Theme.dialogs_namePaint.linkColor = Theme.getColor(Theme.key_chats_nameArchived));
+                Theme.dialogs_namePaint[paintIndex].setColor(Theme.dialogs_namePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_nameArchived));
             } else if (encryptedChat != null || customDialog != null && customDialog.type == 2) {
-                Theme.dialogs_namePaint.setColor(Theme.dialogs_namePaint.linkColor = Theme.getColor(Theme.key_chats_secretName));
+                Theme.dialogs_namePaint[paintIndex].setColor(Theme.dialogs_namePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_secretName));
             } else {
-                Theme.dialogs_namePaint.setColor(Theme.dialogs_namePaint.linkColor = Theme.getColor(Theme.key_chats_name));
+                Theme.dialogs_namePaint[paintIndex].setColor(Theme.dialogs_namePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_name));
             }
             canvas.save();
             canvas.translate(nameLeft, AndroidUtilities.dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 10 : 13));
@@ -1890,12 +1877,12 @@ public class DialogCell extends BaseCell {
         if (messageLayout != null) {
             if (currentDialogFolderId != 0) {
                 if (chat != null) {
-                    Theme.dialogs_messagePaint.setColor(Theme.dialogs_messagePaint.linkColor = Theme.getColor(Theme.key_chats_nameMessageArchived));
+                    Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_nameMessageArchived));
                 } else {
-                    Theme.dialogs_messagePaint.setColor(Theme.dialogs_messagePaint.linkColor = Theme.getColor(Theme.key_chats_messageArchived));
+                    Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_messageArchived));
                 }
             } else {
-                Theme.dialogs_messagePaint.setColor(Theme.dialogs_messagePaint.linkColor = Theme.getColor(Theme.key_chats_message));
+                Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_message));
             }
             canvas.save();
             canvas.translate(messageLeft, messageTop);
@@ -1915,8 +1902,8 @@ public class DialogCell extends BaseCell {
                 if (drawCheck1) {
                     setDrawableBounds(Theme.dialogs_halfCheckDrawable, halfCheckDrawLeft, checkDrawTop);
                     Theme.dialogs_halfCheckDrawable.draw(canvas);
-                    setDrawableBounds(Theme.dialogs_checkDrawable, checkDrawLeft, checkDrawTop);
-                    Theme.dialogs_checkDrawable.draw(canvas);
+                    setDrawableBounds(Theme.dialogs_checkReadDrawable, checkDrawLeft, checkDrawTop);
+                    Theme.dialogs_checkReadDrawable.draw(canvas);
                 } else {
                     setDrawableBounds(Theme.dialogs_checkDrawable, checkDrawLeft, checkDrawTop);
                     Theme.dialogs_checkDrawable.draw(canvas);
@@ -1996,7 +1983,11 @@ public class DialogCell extends BaseCell {
             float scale = 1.0f + interpolator.getInterpolation(animatingArchiveAvatarProgress / 170.0f);
             canvas.scale(scale, scale, avatarImage.getCenterX(), avatarImage.getCenterY());
         }
-        avatarImage.draw(canvas);
+
+        if (currentDialogFolderId == 0 || archivedChatsDrawable == null || !archivedChatsDrawable.isDraw()) {
+            avatarImage.draw(canvas);
+        }
+
         if (animatingArchiveAvatar) {
             canvas.restore();
         }
@@ -2038,6 +2029,9 @@ public class DialogCell extends BaseCell {
 
         if (translationX != 0) {
             canvas.restore();
+        }
+        if (currentDialogFolderId != 0 && translationX == 0 && archivedChatsDrawable != null) {
+            archivedChatsDrawable.draw(canvas);
         }
 
         if (useSeparator) {
@@ -2086,23 +2080,23 @@ public class DialogCell extends BaseCell {
 
         if (archiveHidden) {
             if (archiveBackgroundProgress > 0.0f) {
-                archiveBackgroundProgress -= dt / 170.0f;
-                if (currentRevealBounceProgress < 0.0f) {
-                    currentRevealBounceProgress = 0.0f;
+                archiveBackgroundProgress -= dt / 230.0f;
+                if (archiveBackgroundProgress < 0.0f) {
+                    archiveBackgroundProgress = 0.0f;
                 }
                 if (avatarDrawable.getAvatarType() == AvatarDrawable.AVATAR_TYPE_ARCHIVED) {
-                    avatarDrawable.setArchivedAvatarHiddenProgress(archiveBackgroundProgress);
+                    avatarDrawable.setArchivedAvatarHiddenProgress(CubicBezierInterpolator.EASE_OUT_QUINT.getInterpolation(archiveBackgroundProgress));
                 }
                 needInvalidate = true;
             }
         } else {
             if (archiveBackgroundProgress < 1.0f) {
-                archiveBackgroundProgress += dt / 170.0f;
-                if (currentRevealBounceProgress > 1.0f) {
-                    currentRevealBounceProgress = 1.0f;
+                archiveBackgroundProgress += dt / 230.0f;
+                if (archiveBackgroundProgress > 1.0f) {
+                    archiveBackgroundProgress = 1.0f;
                 }
                 if (avatarDrawable.getAvatarType() == AvatarDrawable.AVATAR_TYPE_ARCHIVED) {
-                    avatarDrawable.setArchivedAvatarHiddenProgress(archiveBackgroundProgress);
+                    avatarDrawable.setArchivedAvatarHiddenProgress(CubicBezierInterpolator.EASE_OUT_QUINT.getInterpolation(archiveBackgroundProgress));
                 }
                 needInvalidate = true;
             }
@@ -2146,6 +2140,16 @@ public class DialogCell extends BaseCell {
         }
         if (needInvalidate) {
             invalidate();
+        }
+    }
+
+    public void startOutAnimation() {
+        if (archivedChatsDrawable != null) {
+            archivedChatsDrawable.outCy = avatarImage.getCenterY();
+            archivedChatsDrawable.outCx = avatarImage.getCenterX();
+            archivedChatsDrawable.outRadius = avatarImage.getImageWidth() / 2.0f;
+            archivedChatsDrawable.outImageSize = avatarImage.getBitmapWidth();
+            archivedChatsDrawable.startOutAnimation();
         }
     }
 
@@ -2277,5 +2281,9 @@ public class DialogCell extends BaseCell {
 
     public void setBottomClip(int value) {
         bottomClip = value;
+    }
+
+    public void setArchivedPullAnimation(PullForegroundDrawable drawable) {
+        archivedChatsDrawable = drawable;
     }
 }

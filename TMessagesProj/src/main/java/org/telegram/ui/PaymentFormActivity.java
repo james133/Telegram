@@ -19,6 +19,7 @@ import android.app.Dialog;
 import android.app.FragmentManager;
 import android.app.FragmentTransaction;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -1020,7 +1021,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                 showEditDoneProgress(true, true);
                 progressView.setVisibility(View.VISIBLE);
                 doneItem.setEnabled(false);
-                doneItem.getImageView().setVisibility(View.INVISIBLE);
+                doneItem.getContentView().setVisibility(View.INVISIBLE);
                 webView = new WebView(context) {
                     @Override
                     public boolean onTouchEvent(MotionEvent event) {
@@ -1823,7 +1824,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                 frameLayout.addView(shadow, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 3, Gravity.LEFT | Gravity.BOTTOM, 0, 0, 0, 48));
 
                 doneItem.setEnabled(false);
-                doneItem.getImageView().setVisibility(View.INVISIBLE);
+                doneItem.getContentView().setVisibility(View.INVISIBLE);
 
                 webView = new WebView(context) {
                     @Override
@@ -1957,10 +1958,15 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                     text += "\n\n" + LocaleController.getString("TurnPasswordOffPassport", R.string.TurnPasswordOffPassport);
                 }
                 builder.setMessage(text);
-                builder.setTitle(LocaleController.getString("AppName", R.string.AppName));
-                builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialogInterface, i) -> sendSavePassword(true));
+                builder.setTitle(LocaleController.getString("TurnPasswordOffQuestionTitle", R.string.TurnPasswordOffQuestionTitle));
+                builder.setPositiveButton(LocaleController.getString("Disable", R.string.Disable), (dialogInterface, i) -> sendSavePassword(true));
                 builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
-                showDialog(builder.create());
+                AlertDialog alertDialog = builder.create();
+                showDialog(alertDialog);
+                TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
+                if (button != null) {
+                    button.setTextColor(Theme.getColor(Theme.key_dialogTextRed2));
+                }
             });
 
             inputFields = new EditTextBoldCursor[FIELDS_COUNT_PASSWORD];
@@ -3033,7 +3039,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                 if (response instanceof TLRPC.TL_payments_paymentResult) {
                     MessagesController.getInstance(currentAccount).processUpdates(((TLRPC.TL_payments_paymentResult) response).updates, false);
                     AndroidUtilities.runOnUIThread(this::goToNextStep);
-                } else if (response instanceof TLRPC.TL_payments_paymentVerficationNeeded) {
+                } else if (response instanceof TLRPC.TL_payments_paymentVerificationNeeded) {
                     AndroidUtilities.runOnUIThread(() -> {
                         NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.paymentFinished);
                         setDonePressed(false);
@@ -3042,8 +3048,8 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                         showEditDoneProgress(true, true);
                         progressView.setVisibility(View.VISIBLE);
                         doneItem.setEnabled(false);
-                        doneItem.getImageView().setVisibility(View.INVISIBLE);
-                        webView.loadUrl(webViewUrl = ((TLRPC.TL_payments_paymentVerficationNeeded) response).url);
+                        doneItem.getContentView().setVisibility(View.INVISIBLE);
+                        webView.loadUrl(webViewUrl = ((TLRPC.TL_payments_paymentVerificationNeeded) response).url);
                     });
                 }
             } else {
@@ -3182,9 +3188,9 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                 progressView.setVisibility(View.VISIBLE);
                 doneItem.setEnabled(false);
                 doneItemAnimation.playTogether(
-                        ObjectAnimator.ofFloat(doneItem.getImageView(), "scaleX", 0.1f),
-                        ObjectAnimator.ofFloat(doneItem.getImageView(), "scaleY", 0.1f),
-                        ObjectAnimator.ofFloat(doneItem.getImageView(), "alpha", 0.0f),
+                        ObjectAnimator.ofFloat(doneItem.getContentView(), "scaleX", 0.1f),
+                        ObjectAnimator.ofFloat(doneItem.getContentView(), "scaleY", 0.1f),
+                        ObjectAnimator.ofFloat(doneItem.getContentView(), "alpha", 0.0f),
                         ObjectAnimator.ofFloat(progressView, "scaleX", 1.0f),
                         ObjectAnimator.ofFloat(progressView, "scaleY", 1.0f),
                         ObjectAnimator.ofFloat(progressView, "alpha", 1.0f));
@@ -3195,15 +3201,15 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                             ObjectAnimator.ofFloat(progressView, "scaleY", 0.1f),
                             ObjectAnimator.ofFloat(progressView, "alpha", 0.0f));
                 } else {
-                    doneItem.getImageView().setVisibility(View.VISIBLE);
+                    doneItem.getContentView().setVisibility(View.VISIBLE);
                     doneItem.setEnabled(true);
                     doneItemAnimation.playTogether(
                             ObjectAnimator.ofFloat(progressView, "scaleX", 0.1f),
                             ObjectAnimator.ofFloat(progressView, "scaleY", 0.1f),
                             ObjectAnimator.ofFloat(progressView, "alpha", 0.0f),
-                            ObjectAnimator.ofFloat(doneItem.getImageView(), "scaleX", 1.0f),
-                            ObjectAnimator.ofFloat(doneItem.getImageView(), "scaleY", 1.0f),
-                            ObjectAnimator.ofFloat(doneItem.getImageView(), "alpha", 1.0f));
+                            ObjectAnimator.ofFloat(doneItem.getContentView(), "scaleX", 1.0f),
+                            ObjectAnimator.ofFloat(doneItem.getContentView(), "scaleY", 1.0f),
+                            ObjectAnimator.ofFloat(doneItem.getContentView(), "alpha", 1.0f));
                 }
 
             }
@@ -3214,7 +3220,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                         if (!show) {
                             progressView.setVisibility(View.INVISIBLE);
                         } else {
-                            doneItem.getImageView().setVisibility(View.INVISIBLE);
+                            doneItem.getContentView().setVisibility(View.INVISIBLE);
                         }
                     }
                 }

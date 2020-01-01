@@ -53,6 +53,8 @@ public class ApplicationLoader extends Application {
     public static volatile boolean mainInterfacePausedStageQueue = true;
     public static volatile long mainInterfacePausedStageQueueTime;
 
+    public static boolean hasPlayServices;
+
     public static File getFilesDirFixed() {
         for (int a = 0; a < 10; a++) {
             File path = ApplicationLoader.applicationContext.getFilesDir();
@@ -119,7 +121,7 @@ public class ApplicationLoader extends Application {
         }
 
         try {
-            PowerManager pm = (PowerManager)ApplicationLoader.applicationContext.getSystemService(Context.POWER_SERVICE);
+            PowerManager pm = (PowerManager) ApplicationLoader.applicationContext.getSystemService(Context.POWER_SERVICE);
             isScreenOn = pm.isScreenOn();
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("screen state = " + isScreenOn);
@@ -132,16 +134,19 @@ public class ApplicationLoader extends Application {
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             UserConfig.getInstance(a).loadConfig();
             MessagesController.getInstance(a);
-            ConnectionsManager.getInstance(a);
+            if (a == 0) {
+                SharedConfig.pushStringStatus = "__FIREBASE_GENERATING_SINCE_" + ConnectionsManager.getInstance(a).getCurrentTime() + "__";
+            } else {
+                ConnectionsManager.getInstance(a);
+            }
             TLRPC.User user = UserConfig.getInstance(a).getCurrentUser();
             if (user != null) {
                 MessagesController.getInstance(a).putUser(user, true);
-                MessagesController.getInstance(a).getBlockedUsers(true);
                 SendMessagesHelper.getInstance(a).checkUnsentMessages();
             }
         }
 
-        ApplicationLoader app = (ApplicationLoader)ApplicationLoader.applicationContext;
+        ApplicationLoader app = (ApplicationLoader) ApplicationLoader.applicationContext;
         app.initPlayServices();
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("app initied");
@@ -185,23 +190,25 @@ public class ApplicationLoader extends Application {
 
     public static void startPushService() {
         SharedPreferences preferences = MessagesController.getGlobalNotificationsSettings();
-        if (preferences.getBoolean("pushService", true)) {
+        boolean enabled;
+        if (preferences.contains("pushService")) {
+            enabled = preferences.getBoolean("pushService", true);
+        } else {
+            enabled = MessagesController.getMainSettings(UserConfig.selectedAccount).getBoolean("keepAliveService", false);
+        }
+        if (enabled) {
             try {
                 applicationContext.startService(new Intent(applicationContext, NotificationsService.class));
             } catch (Throwable ignore) {
 
             }
         } else {
-            stopPushService();
+            applicationContext.stopService(new Intent(applicationContext, NotificationsService.class));
+
+            PendingIntent pintent = PendingIntent.getService(applicationContext, 0, new Intent(applicationContext, NotificationsService.class), 0);
+            AlarmManager alarm = (AlarmManager)applicationContext.getSystemService(Context.ALARM_SERVICE);
+            alarm.cancel(pintent);
         }
-    }
-
-    public static void stopPushService() {
-        applicationContext.stopService(new Intent(applicationContext, NotificationsService.class));
-
-        PendingIntent pintent = PendingIntent.getService(applicationContext, 0, new Intent(applicationContext, NotificationsService.class), 0);
-        AlarmManager alarm = (AlarmManager)applicationContext.getSystemService(Context.ALARM_SERVICE);
-        alarm.cancel(pintent);
     }
 
     @Override
@@ -217,10 +224,10 @@ public class ApplicationLoader extends Application {
 
     private void initPlayServices() {
         AndroidUtilities.runOnUIThread(() -> {
-            if (checkPlayServices()) {
+            if (hasPlayServices = checkPlayServices()) {
                 final String currentPushString = SharedConfig.pushString;
                 if (!TextUtils.isEmpty(currentPushString)) {
-                    if (BuildVars.LOGS_ENABLED) {
+                    if (BuildVars.DEBUG_PRIVATE_VERSION && BuildVars.LOGS_ENABLED) {
                         FileLog.d("GCM regId = " + currentPushString);
                     }
                 } else {
@@ -235,6 +242,12 @@ public class ApplicationLoader extends Application {
                             if (!TextUtils.isEmpty(token)) {
                                 GcmPushListenerService.sendRegistrationToServer(token);
                             }
+                        }).addOnFailureListener(e -> {
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("Failed to get regid");
+                            }
+                            SharedConfig.pushStringStatus = "__FIREBASE_FAILED__";
+                            GcmPushListenerService.sendRegistrationToServer(null);
                         });
                     } catch (Throwable e) {
                         FileLog.e(e);
@@ -244,6 +257,8 @@ public class ApplicationLoader extends Application {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("No valid Google Play Services APK found.");
                 }
+                SharedConfig.pushStringStatus = "__NO_GOOGLE_PLAY_SERVICES__";
+                GcmPushListenerService.sendRegistrationToServer(null);
             }
         }, 1000);
     }
@@ -381,6 +396,29 @@ public class ApplicationLoader extends Application {
             FileLog.e(e);
         }
         return false;
+    }
+
+    public static int getAutodownloadNetworkType() {
+        try {
+            ConnectivityManager connectivityManager = (ConnectivityManager) ApplicationLoader.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo netInfo = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+            if (netInfo != null) {
+                if (netInfo.getState() == NetworkInfo.State.CONNECTED) {
+                    if (connectivityManager.isActiveNetworkMetered()) {
+                        return StatsController.TYPE_MOBILE;
+                    } else {
+                        return StatsController.TYPE_WIFI;
+                    }
+                }
+            }
+            netInfo = connectivityManager.getActiveNetworkInfo();
+            if (netInfo != null && netInfo.isRoaming()) {
+                return StatsController.TYPE_ROAMING;
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return StatsController.TYPE_MOBILE;
     }
 
     public static boolean isConnectedToWiFi() {

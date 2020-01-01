@@ -8,23 +8,20 @@
 
 package org.telegram.ui;
 
-import android.app.AlarmManager;
-import android.app.PendingIntent;
 import android.content.Context;
-import android.content.Intent;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
 import org.telegram.SQLite.SQLitePreparedStatement;
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.ClearCacheService;
-import org.telegram.messenger.DataQuery;
+import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLoader;
@@ -32,6 +29,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.NativeByteBuffer;
@@ -76,8 +74,9 @@ public class CacheControlActivity extends BaseFragment {
     private long musicSize = -1;
     private long photoSize = -1;
     private long videoSize = -1;
+    private long stickersSize = -1;
     private long totalSize = -1;
-    private boolean[] clear = new boolean[6];
+    private boolean[] clear = new boolean[7];
     private boolean calculating = true;
 
     private volatile boolean canceled = false;
@@ -118,8 +117,12 @@ public class CacheControlActivity extends BaseFragment {
             if (canceled) {
                 return;
             }
+            stickersSize = getDirectorySize(new File(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), "acache"), 0);
+            if (canceled) {
+                return;
+            }
             audioSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), 0);
-            totalSize = cacheSize + videoSize + audioSize + photoSize + documentsSize + musicSize;
+            totalSize = cacheSize + videoSize + audioSize + photoSize + documentsSize + musicSize + stickersSize;
             AndroidUtilities.runOnUIThread(() -> {
                 calculating = false;
                 if (listAdapter != null) {
@@ -143,7 +146,7 @@ public class CacheControlActivity extends BaseFragment {
         }
         long size = 0;
         if (dir.isDirectory()) {
-            size = Utilities.getDirSize(dir.getAbsolutePath(), documentsMusicType);
+            size = Utilities.getDirSize(dir.getAbsolutePath(), documentsMusicType, false);
         } else if (dir.isFile()) {
             size += dir.length();
         }
@@ -156,7 +159,7 @@ public class CacheControlActivity extends BaseFragment {
         progressDialog.show();
         Utilities.globalQueue.postRunnable(() -> {
             boolean imagesCleared = false;
-            for (int a = 0; a < 6; a++) {
+            for (int a = 0; a < 7; a++) {
                 if (!clear[a]) {
                     continue;
                 }
@@ -175,14 +178,21 @@ public class CacheControlActivity extends BaseFragment {
                 } else if (a == 4) {
                     type = FileLoader.MEDIA_DIR_AUDIO;
                 } else if (a == 5) {
+                    type = 100;
+                } else if (a == 6) {
                     type = FileLoader.MEDIA_DIR_CACHE;
                 }
                 if (type == -1) {
                     continue;
                 }
-                File file = FileLoader.checkDirectory(type);
+                File file;
+                if (type == 100) {
+                    file = new File(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), "acache");
+                } else {
+                    file = FileLoader.checkDirectory(type);
+                }
                 if (file != null) {
-                    Utilities.clearDir(file.getAbsolutePath(), documentsMusicType, Long.MAX_VALUE);
+                    Utilities.clearDir(file.getAbsolutePath(), documentsMusicType, Long.MAX_VALUE, false);
                 }
                 if (type == FileLoader.MEDIA_DIR_CACHE) {
                     cacheSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), documentsMusicType);
@@ -200,10 +210,13 @@ public class CacheControlActivity extends BaseFragment {
                     photoSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), documentsMusicType);
                 } else if (type == FileLoader.MEDIA_DIR_VIDEO) {
                     videoSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), documentsMusicType);
+                } else if (type == 100) {
+                    imagesCleared = true;
+                    stickersSize = getDirectorySize(new File(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), "acache"), documentsMusicType);
                 }
             }
             final boolean imagesClearedFinal = imagesCleared;
-            totalSize = cacheSize + videoSize + audioSize + photoSize + documentsSize + musicSize;
+            totalSize = cacheSize + videoSize + audioSize + photoSize + documentsSize + musicSize + stickersSize;
             AndroidUtilities.runOnUIThread(() -> {
                 if (imagesClearedFinal) {
                     ImageLoader.getInstance().clearMemory();
@@ -252,34 +265,30 @@ public class CacheControlActivity extends BaseFragment {
             if (position == keepMediaRow) {
                 BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity());
                 builder.setItems(new CharSequence[]{LocaleController.formatPluralString("Days", 3), LocaleController.formatPluralString("Weeks", 1), LocaleController.formatPluralString("Months", 1), LocaleController.getString("KeepMediaForever", R.string.KeepMediaForever)}, (dialog, which) -> {
-                    SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
                     if (which == 0) {
-                        editor.putInt("keep_media", 3);
+                        SharedConfig.setKeepMedia(3);
                     } else if (which == 1) {
-                        editor.putInt("keep_media", 0);
+                        SharedConfig.setKeepMedia(0);
                     } else if (which == 2) {
-                        editor.putInt("keep_media", 1);
+                        SharedConfig.setKeepMedia(1);
                     } else if (which == 3) {
-                        editor.putInt("keep_media", 2);
+                        SharedConfig.setKeepMedia(2);
                     }
-                    editor.commit();
                     if (listAdapter != null) {
                         listAdapter.notifyDataSetChanged();
                     }
-                    PendingIntent pintent = PendingIntent.getService(ApplicationLoader.applicationContext, 1, new Intent(ApplicationLoader.applicationContext, ClearCacheService.class), 0);
-                    AlarmManager alarmManager = (AlarmManager) ApplicationLoader.applicationContext.getSystemService(Context.ALARM_SERVICE);
-                    alarmManager.cancel(pintent);
-                    if (which != 3) {
-                        alarmManager.setInexactRepeating(AlarmManager.RTC_WAKEUP, 0, AlarmManager.INTERVAL_DAY, pintent);
-                    }
+                    SharedConfig.checkKeepMedia();
                 });
                 showDialog(builder.create());
             } else if (position == databaseRow) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-                builder.setTitle(LocaleController.getString("AppName", R.string.AppName));
+                builder.setTitle(LocaleController.getString("LocalDatabaseClearTextTitle", R.string.LocalDatabaseClearTextTitle));
+                builder.setMessage(LocaleController.getString("LocalDatabaseClearText", R.string.LocalDatabaseClearText));
                 builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
-                builder.setMessage(LocaleController.getString("LocalDatabaseClear", R.string.LocalDatabaseClear));
                 builder.setPositiveButton(LocaleController.getString("CacheClear", R.string.CacheClear), (dialogInterface, i) -> {
+                    if (getParentActivity() == null) {
+                        return;
+                    }
                     final AlertDialog progressDialog = new AlertDialog(getParentActivity(), 3);
                     progressDialog.setCanCacnel(false);
                     progressDialog.show();
@@ -345,7 +354,7 @@ public class CacheControlActivity extends BaseFragment {
                                     database.executeFast("DELETE FROM media_counts_v2 WHERE uid = " + did).stepThis().dispose();
                                     database.executeFast("DELETE FROM media_v2 WHERE uid = " + did).stepThis().dispose();
                                     database.executeFast("DELETE FROM media_holes_v2 WHERE uid = " + did).stepThis().dispose();
-                                    DataQuery.getInstance(currentAccount).clearBotKeyboard(did, null);
+                                    MediaDataController.getInstance(currentAccount).clearBotKeyboard(did, null);
                                     if (messageId != -1) {
                                         MessagesStorage.createFirstHoles(did, state5, state6, messageId);
                                     }
@@ -376,17 +385,21 @@ public class CacheControlActivity extends BaseFragment {
                         }
                     });
                 });
-                showDialog(builder.create());
+                AlertDialog alertDialog = builder.create();
+                showDialog(alertDialog);
+                TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
+                if (button != null) {
+                    button.setTextColor(Theme.getColor(Theme.key_dialogTextRed2));
+                }
             } else if (position == cacheRow) {
                 if (totalSize <= 0 || getParentActivity() == null) {
                     return;
                 }
                 BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity());
-                builder.setApplyTopPadding(false);
                 builder.setApplyBottomPadding(false);
                 LinearLayout linearLayout = new LinearLayout(getParentActivity());
                 linearLayout.setOrientation(LinearLayout.VERTICAL);
-                for (int a = 0; a < 6; a++) {
+                for (int a = 0; a < 7; a++) {
                     long size = 0;
                     String name = null;
                     if (a == 0) {
@@ -405,6 +418,9 @@ public class CacheControlActivity extends BaseFragment {
                         size = audioSize;
                         name = LocaleController.getString("LocalAudioCache", R.string.LocalAudioCache);
                     } else if (a == 5) {
+                        size = stickersSize;
+                        name = LocaleController.getString("AnimatedStickers", R.string.AnimatedStickers);
+                    } else if (a == 6) {
                         size = cacheSize;
                         name = LocaleController.getString("LocalCache", R.string.LocalCache);
                     }
@@ -507,7 +523,7 @@ public class CacheControlActivity extends BaseFragment {
                         }
                     } else if (position == keepMediaRow) {
                         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-                        int keepMedia = preferences.getInt("keep_media", 2);
+                        int keepMedia = SharedConfig.keepMedia;
                         String value;
                         if (keepMedia == 0) {
                             value = LocaleController.formatPluralString("Weeks", 1);

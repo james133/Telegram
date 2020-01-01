@@ -2,6 +2,7 @@ package org.telegram.messenger;
 
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.Theme;
 
 public class ImageLocation {
 
@@ -23,6 +24,7 @@ public class ImageLocation {
     public boolean photoPeerBig;
     public TLRPC.InputPeer photoPeer;
     public TLRPC.InputStickerSet stickerSet;
+    public int imageType;
 
     public int currentSize;
 
@@ -155,11 +157,15 @@ public class ImageLocation {
         } else if (photoSize == null || sticker == null) {
             return null;
         }
-        TLRPC.InputStickerSet stickerSet = DataQuery.getInputStickerSet(sticker);
+        TLRPC.InputStickerSet stickerSet = MediaDataController.getInputStickerSet(sticker);
         if (stickerSet == null) {
             return null;
         }
-        return getForPhoto(photoSize.location, photoSize.size, null, null, null, false, sticker.dc_id, stickerSet, photoSize.type);
+        ImageLocation imageLocation = getForPhoto(photoSize.location, photoSize.size, null, null, null, false, sticker.dc_id, stickerSet, photoSize.type);
+        if (MessageObject.isAnimatedStickerDocument(sticker, true)) {
+            imageLocation.imageType = FileLoader.IMAGE_TYPE_LOTTIE;
+        }
+        return imageLocation;
     }
 
     public static ImageLocation getForDocument(TLRPC.PhotoSize photoSize, TLRPC.Document document) {
@@ -259,7 +265,7 @@ public class ImageLocation {
         return "stripped" + FileRefController.getKeyForParentObject(parentObject);
     }
 
-    public String getKey(Object parentObject, Object fullObject) {
+    public String getKey(Object parentObject, Object fullObject, boolean url) {
         if (secureDocument != null) {
             return secureDocument.secureFile.dc_id + "_" + secureDocument.secureFile.id;
         } else if (photoSize instanceof TLRPC.TL_photoStrippedSize) {
@@ -271,7 +277,10 @@ public class ImageLocation {
         } else if (webFile != null) {
             return Utilities.MD5(webFile.url);
         } else if (document != null) {
-            if (document.id != 0 && document.dc_id != 0) {
+            if (!url && document instanceof DocumentObject.ThemeDocument) {
+                DocumentObject.ThemeDocument themeDocument = (DocumentObject.ThemeDocument) document;
+                return document.dc_id + "_" + document.id + "_" + Theme.getBaseThemeKey(themeDocument.themeSettings) + "_" + themeDocument.themeSettings.accent_color + "_" + themeDocument.themeSettings.message_top_color + "_" + themeDocument.themeSettings.message_bottom_color;
+            } else if (document.id != 0 && document.dc_id != 0) {
                 return document.dc_id + "_" + document.id;
             }
         } else if (path != null) {
