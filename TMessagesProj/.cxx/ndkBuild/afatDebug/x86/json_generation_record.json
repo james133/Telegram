@@ -5,51 +5,7 @@
   },
   {
     "level": "INFO",
-    "message": "rebuilding JSON D:\\rlyc\\android\\Telegram\\TMessagesProj\\.cxx\\ndkBuild\\afatDebug\\x86\\android_gradle_build.json due to:"
-  },
-  {
-    "level": "INFO",
-    "message": "- a dependent build file changed"
-  },
-  {
-    "level": "INFO",
-    "message": "  - D:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Android.mk"
-  },
-  {
-    "level": "INFO",
-    "message": "  - D:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Application.mk"
-  },
-  {
-    "level": "INFO",
-    "message": "keeping json folder \u0027D:\\rlyc\\android\\Telegram\\TMessagesProj\\.cxx\\ndkBuild\\afatDebug\\x86\u0027 but regenerating project"
-  },
-  {
-    "level": "INFO",
-    "message": "executing ndkBuild Executable : C:\\Users\\pcgpc\\AppData\\Local\\Android\\Sdk\\ndk-bundle\\ndk-build.cmd\narguments : \nNDK_PROJECT_PATH\u003dnull\nAPP_BUILD_SCRIPT\u003dD:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Android.mk\nNDK_APPLICATION_MK\u003dD:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Application.mk\nAPP_ABI\u003dx86\nNDK_ALL_ABIS\u003dx86\nNDK_DEBUG\u003d1\nAPP_PLATFORM\u003dandroid-16\nNDK_OUT\u003dD:/rlyc/android/Telegram/TMessagesProj/build/intermediates/ndkBuild/afatDebug/obj\nNDK_LIBS_OUT\u003dD:\\rlyc\\android\\Telegram\\TMessagesProj\\build\\intermediates\\ndkBuild\\afatDebug\\lib\nNDK_APPLICATION_MK:\u003djni/Application.mk\nAPP_PLATFORM:\u003dandroid-16\n--jobs\u003d8\nAPP_SHORT_COMMANDS\u003dfalse\nLOCAL_SHORT_COMMANDS\u003dfalse\n-B\n-n\njvmArgs : \n\n"
-  },
-  {
-    "level": "INFO",
-    "message": "Executable : C:\\Users\\pcgpc\\AppData\\Local\\Android\\Sdk\\ndk-bundle\\ndk-build.cmd\narguments : \nNDK_PROJECT_PATH\u003dnull\nAPP_BUILD_SCRIPT\u003dD:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Android.mk\nNDK_APPLICATION_MK\u003dD:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Application.mk\nAPP_ABI\u003dx86\nNDK_ALL_ABIS\u003dx86\nNDK_DEBUG\u003d1\nAPP_PLATFORM\u003dandroid-16\nNDK_OUT\u003dD:/rlyc/android/Telegram/TMessagesProj/build/intermediates/ndkBuild/afatDebug/obj\nNDK_LIBS_OUT\u003dD:\\rlyc\\android\\Telegram\\TMessagesProj\\build\\intermediates\\ndkBuild\\afatDebug\\lib\nNDK_APPLICATION_MK:\u003djni/Application.mk\nAPP_PLATFORM:\u003dandroid-16\n--jobs\u003d8\nAPP_SHORT_COMMANDS\u003dfalse\nLOCAL_SHORT_COMMANDS\u003dfalse\n-B\n-n\njvmArgs : \n\n"
-  },
-  {
-    "level": "INFO",
-    "message": "done executing ndkBuild"
-  },
-  {
-    "level": "INFO",
-    "message": "write build output D:\\rlyc\\android\\Telegram\\TMessagesProj\\.cxx\\ndkBuild\\afatDebug\\x86\\build_output.txt"
-  },
-  {
-    "level": "INFO",
-    "message": "parse and convert ndk-build output to build configuration JSON"
-  },
-  {
-    "level": "INFO",
-    "message": "found application make file D:\\rlyc\\android\\Telegram\\TMessagesProj\\jni\\Application.mk"
-  },
-  {
-    "level": "INFO",
-    "message": "write command file D:\\rlyc\\android\\Telegram\\TMessagesProj\\.cxx\\ndkBuild\\afatDebug\\x86\\build_command.txt"
+    "message": "JSON \u0027/Users/pcg/pcgdev/android/Telegram/TMessagesProj/.cxx/ndkBuild/afatDebug/x86/android_gradle_build.json\u0027 was up-to-date"
   },
   {
     "level": "INFO",
